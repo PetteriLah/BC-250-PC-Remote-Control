@@ -146,6 +146,15 @@
         <!-- Controller Status Display -->
         <div id="controllerStatus" class="status-message"></div>
         
+        <label style="display:flex; align-items:center; margin:20px 0; cursor:pointer;">
+          <input type="checkbox" id="ps5AutoConnect" style="width:20px; height:20px; margin-right:12px; accent-color:#00d9ff;"> 
+          <strong style="font-family:'Share Tech Mono';">AUTO RECONNECT</strong>
+        </label>
+        
+        <label style="display:block; margin:20px 0;">
+          <strong style="font-family:'Share Tech Mono';">RECONNECT INTERVAL (SECONDS):</strong>
+          <input type="number" id="ps5Interval" value="30" min="5" max="300" style="width:100%; padding:15px; margin-top:8px; background:#0a0a0f; border:2px solid #2a2a3a; color:#fff; border-radius:4px; font-family:'Share Tech Mono';">
+        </label>
         
         <button onclick="savePS5()" class="btn" style="width:100%;">💾 SAVE PS5 SETTINGS</button>
         <div id="ps5Status" style="margin-top:15px;"></div>
@@ -314,8 +323,8 @@
       const config = {
         enabled: document.getElementById('ps5Enabled').checked,
         macAddress: document.getElementById('ps5Mac').value.trim(),
-        autoConnect: document.getElementById('ps5AutoConnect').checked
-        // reconnectInterval poistettu
+        autoConnect: document.getElementById('ps5AutoConnect').checked,
+        reconnectInterval: parseInt(document.getElementById('ps5Interval').value) || 30
       };
       
       document.getElementById('ps5Status').innerText = '💾 SAVING...';
