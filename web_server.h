@@ -1,0 +1,341 @@
+#ifndef WEB_SERVER_H
+#define WEB_SERVER_H
+
+#include <WebServer.h>
+#include <Update.h>
+#include "LittleFS.h"
+#include <ArduinoJson.h>
+#include "pc_control.h"  // Tämä tuo PowerState-määrittelyn
+#include "version.h"
+#include "pins.h"
+
+extern WebServer server;
+extern bool pcIsOn;
+extern bool shutdownRequested;
+extern bool forceShutdown;
+extern PowerState powerState;  // Tämä on nyt tunnistettu
+extern unsigned long powerStateStartTime;
+extern int ps5State;
+extern String ps5MacAddress;
+extern bool ps5Enabled;
+extern bool ps5AutoConnect;
+extern int ps5ReconnectInterval;
+extern String wifiSSID;
+extern String wifiPassword;
+extern bool wifiConfigured;
+extern bool apMode;
+
+
+String indexHtml = "";
+String updateHtml = "";
+String setupHtml = "";
+String styleCss = "";
+bool filesLoaded = false;
+
+void loadFiles() {
+    if (filesLoaded) return;
+    
+    if (LittleFS.exists("/index.html")) {
+        File file = LittleFS.open("/index.html", "r");
+        indexHtml = file.readString();
+        file.close();
+    }
+    if (LittleFS.exists("/update.html")) {
+        File file = LittleFS.open("/update.html", "r");
+        updateHtml = file.readString();
+        file.close();
+    }
+    if (LittleFS.exists("/setup.html")) {
+        File file = LittleFS.open("/setup.html", "r");
+        setupHtml = file.readString();
+        file.close();
+    }
+    if (LittleFS.exists("/style.css")) {
+        File file = LittleFS.open("/style.css", "r");
+        styleCss = file.readString();
+        file.close();
+    }
+    filesLoaded = true;
+}
+
+void setupWebServer() {
+    loadFiles();
+    
+    // Staattiset sivut
+    server.on("/", []() {
+        server.send(200, "text/html", indexHtml);
+    });
+    
+    server.on("/update", []() {
+        server.send(200, "text/html", updateHtml);
+    });
+    
+    server.on("/setup", []() {
+        server.send(200, "text/html", setupHtml);
+    });
+    
+    server.on("/style.css", []() {
+        server.send(200, "text/css", styleCss);
+    });
+
+// web_server.h - lisää muiden staattisten sivujen jälkeen
+
+server.on("/steam-machines.svg", []() {
+    // Jos tiedosto on LittleFS:ssä
+    if (LittleFS.exists("/steam-machines.svg")) {
+        File file = LittleFS.open("/steam-machines.svg", "r");
+        server.streamFile(file, "image/svg+xml");
+        file.close();
+    } else {
+        // Jos tiedostoa ei ole, palautetaan 404 tai yksinkertainen SVG
+        server.send(200, "image/svg+xml", 
+            "<svg width='180' height='50' xmlns='http://www.w3.org/2000/svg'>"
+            "<text x='10' y='35' font-family='Share Tech Mono' font-size='24' fill='#00d9ff'>BC-250</text>"
+            "</svg>");
+    }
+});
+
+    // API: Bluetooth MAC-osoite
+    server.on("/api/bluetooth/mac", HTTP_GET, []() {
+        String btMac = "";
+        const uint8_t* addr = BP32.localBdAddress();
+        if (addr != nullptr) {
+            char macStr[18];
+            sprintf(macStr, "%02x:%02x:%02x:%02x:%02x:%02x",
+                    addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+            btMac = String(macStr);
+        }
+        
+        StaticJsonDocument<100> doc;
+        doc["macAddress"] = btMac;
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+    // API: WiFi-asetukset - GET
+    server.on("/api/wifi/config", HTTP_GET, []() {
+        StaticJsonDocument<200> doc;
+        doc["ssid"] = wifiSSID;
+        doc["configured"] = wifiConfigured;
+        doc["apMode"] = apMode;
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+    
+    // API: WiFi-asetukset - POST
+    server.on("/api/wifi/config", HTTP_POST, []() {
+        if (!server.hasArg("plain")) {
+            server.send(400, "text/plain", "Body missing");
+            return;
+        }
+        
+        String body = server.arg("plain");
+        
+        StaticJsonDocument<200> doc;
+        DeserializationError error = deserializeJson(doc, body);
+        
+        if (error) {
+            server.send(400, "text/plain", "Invalid JSON");
+            return;
+        }
+        
+        const char* ssid = doc["ssid"];
+        const char* password = doc["password"];
+        
+        if (!ssid || strlen(ssid) == 0) {
+            server.send(400, "text/plain", "SSID required");
+            return;
+        }
+        
+        String passStr = password ? String(password) : "";
+        
+        saveWiFiConfig(String(ssid), passStr);
+        server.send(200, "text/plain", "OK");
+        delay(1000);
+        ESP.restart();
+    });
+    
+    // API: WiFi skannaus
+    server.on("/api/wifi/scan", HTTP_GET, []() {
+        int n = WiFi.scanComplete();
+        if (n == -2) {
+            WiFi.scanNetworks(true);
+            StaticJsonDocument<100> doc;
+            doc["scanning"] = true;
+            
+            String response;
+            serializeJson(doc, response);
+            server.send(200, "application/json", response);
+        } else if (n >= 0) {
+            StaticJsonDocument<1000> doc;
+            JsonArray networks = doc.to<JsonArray>();
+            
+            for (int i = 0; i < n; ++i) {
+                JsonObject net = networks.createNestedObject();
+                net["ssid"] = WiFi.SSID(i);
+                net["rssi"] = WiFi.RSSI(i);
+                net["encryption"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ? 1 : 0;
+            }
+            
+            String response;
+            serializeJson(doc, response);
+            WiFi.scanDelete();
+            server.send(200, "application/json", response);
+        }
+    });
+
+    // STATUS API
+    server.on("/api/status", HTTP_GET, []() {
+        bool currentMonitor = getStablePcState();
+        bool currentOpto = digitalRead(OPTO_PIN);
+        
+        StaticJsonDocument<300> doc;
+        doc["pcOn"] = currentMonitor;
+        doc["shutdownRequested"] = shutdownRequested;
+        doc["forceShutdown"] = forceShutdown;
+        doc["optoState"] = currentOpto;
+        doc["monitorState"] = currentMonitor;
+        doc["version"] = VERSION;
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+    // Power-komennot
+    server.on("/power/on", HTTP_POST, []() {
+        if (getStablePcState() == LOW) {
+            startPowerOn();
+            server.send(200, "text/plain", "OK");
+        } else {
+            server.send(200, "text/plain", "Already on");
+        }
+    });
+
+    server.on("/power/off", HTTP_POST, []() {
+        if (getStablePcState() == HIGH) {
+            startNormalShutdown();
+            server.send(200, "text/plain", "OK");
+        } else {
+            server.send(200, "text/plain", "Already off");
+        }
+    });
+
+    server.on("/power/force", HTTP_POST, []() {
+        if (getStablePcState() == HIGH) {
+            startForceShutdown();
+            server.send(200, "text/plain", "OK");
+        } else {
+            server.send(200, "text/plain", "Already off");
+        }
+    });
+
+    // Firmware update
+    server.on("/update", HTTP_POST, []() {
+        server.sendHeader("Connection", "close");
+        server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    }, []() {
+        HTTPUpload& upload = server.upload();
+        
+        if (upload.status == UPLOAD_FILE_START) {
+            Update.begin(UPDATE_SIZE_UNKNOWN);
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            Update.write(upload.buf, upload.currentSize);
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (Update.end(true)) {
+                server.sendHeader("Connection", "close");
+                server.send(200, "text/plain", "Update successful! Rebooting...");
+                delay(1000);
+                ESP.restart();
+            } else {
+                server.send(500, "text/plain", "Update failed!");
+            }
+        }
+    });
+
+    // PS5 konfiguraatio - GET
+    server.on("/api/ps5/config", HTTP_GET, []() {
+        StaticJsonDocument<300> doc;
+        doc["macAddress"] = ps5MacAddress;
+        doc["enabled"] = ps5Enabled;
+        doc["autoConnect"] = ps5AutoConnect;
+        doc["reconnectInterval"] = ps5ReconnectInterval;
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+    // PS5 konfiguraatio - POST
+    server.on("/api/ps5/config", HTTP_POST, []() {
+        if (!server.hasArg("plain")) {
+            server.send(400, "text/plain", "Body missing");
+            return;
+        }
+        
+        String body = server.arg("plain");
+        
+        StaticJsonDocument<300> doc;
+        DeserializationError error = deserializeJson(doc, body);
+        
+        if (error) {
+            server.send(400, "text/plain", "Invalid JSON");
+            return;
+        }
+        
+        bool enabled = doc["enabled"] | false;
+        const char* mac = doc["macAddress"];
+        bool autoConnect = doc["autoConnect"] | false;
+        int interval = doc["reconnectInterval"] | 30;
+        
+        String macStr = mac ? String(mac) : "";
+        
+        savePS5Config(enabled, macStr, autoConnect, interval);
+        server.send(200, "text/plain", "OK");
+    });
+
+    // PS5 status
+    server.on("/api/ps5/status", HTTP_GET, []() {
+        String stateStr = "unknown";
+        if (!ps5Enabled) stateStr = "disabled";
+        else if (ps5State == 1) stateStr = "disconnected";
+        else if (ps5State == 2) stateStr = "connecting";
+        else if (ps5State == 3) stateStr = "connected";
+        
+        StaticJsonDocument<200> doc;
+        doc["state"] = stateStr;
+        doc["macAddress"] = ps5MacAddress;
+        doc["btAllowed"] = !getStablePcState();
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+
+    // API: Hae yhdistetyn ohjaimen MAC-osoite - ILMAN MAC-HAKUA
+    server.on("/api/ps5/connected-mac", HTTP_GET, []() {
+        StaticJsonDocument<200> doc;
+        
+        if (ps5Simple.isConnected()) {
+            doc["connected"] = true;
+            doc["macAddress"] = "";
+            doc["note"] = "MAC address not available in this Bluepad32 version. Enter manually.";
+        } else {
+            doc["connected"] = false;
+            doc["macAddress"] = "";
+        }
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    });
+
+    server.begin();
+}
+
+#endif
