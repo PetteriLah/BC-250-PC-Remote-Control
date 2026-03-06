@@ -32,6 +32,7 @@ int ps5State = 0;              // 0=disabled, 1=disconnected, 2=connecting, 3=co
 String ps5MacAddress = "";
 bool ps5Enabled = false;
 bool ps5AutoConnect = false;
+int ps5ReconnectInterval = 30;
 unsigned long lastPS5ConnectionAttempt = 0;
 unsigned long lastPS5Update = 0;
 
@@ -206,13 +207,14 @@ bool getStablePcState() {
 // ================ PS5-funktiot ================
 
 // PS5 konfiguraation tallennus ARDUINOJSONILLA
-void savePS5Config(bool enabled, String mac, bool autoConnect) {
+void savePS5Config(bool enabled, String mac, bool autoConnect, int interval) {
     File file = LittleFS.open("/ps5_config.json", "w");
     if (!file) return;
     
     StaticJsonDocument<300> doc;
     doc["enabled"] = enabled;
     
+    // Jos MAC on tyhjä, tallennetaan tyhjä string (ei 00:00:00:00:00:00)
     if (mac.length() == 0 || mac == "00:00:00:00:00:00") {
         doc["macAddress"] = "";
     } else {
@@ -220,6 +222,7 @@ void savePS5Config(bool enabled, String mac, bool autoConnect) {
     }
     
     doc["autoConnect"] = autoConnect;
+    doc["reconnectInterval"] = interval;
     
     serializeJson(doc, file);
     file.close();
@@ -227,7 +230,9 @@ void savePS5Config(bool enabled, String mac, bool autoConnect) {
     ps5Enabled = enabled;
     ps5MacAddress = (mac.length() == 0 || mac == "00:00:00:00:00:00") ? "" : mac;
     ps5AutoConnect = autoConnect;
+    ps5ReconnectInterval = interval;
     
+    // Päivitä sallittu MAC (käytä 00:00:00:00:00:00 jos tyhjä)
     if (ps5MacAddress.length() == 0) {
         ps5Simple.setAllowedMac("00:00:00:00:00:00");
     } else {
@@ -241,7 +246,8 @@ void loadPS5Config() {
         ps5Enabled = false;
         ps5MacAddress = "";
         ps5AutoConnect = false;
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");
+        ps5ReconnectInterval = 30;
+        ps5Simple.setAllowedMac("00:00:00:00:00:00");  // Kaikki sallittu
         return;
     }
     
@@ -256,19 +262,27 @@ void loadPS5Config() {
         ps5Enabled = false;
         ps5MacAddress = "";
         ps5AutoConnect = false;
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");
+        ps5ReconnectInterval = 30;
+        ps5Simple.setAllowedMac("00:00:00:00:00:00");  // Kaikki sallittu
         return;
     }
     
     ps5Enabled = doc["enabled"] | false;
     ps5MacAddress = doc["macAddress"] | "";
     ps5AutoConnect = doc["autoConnect"] | false;
+    ps5ReconnectInterval = doc["reconnectInterval"] | 30;
     
+    // Jos MAC on tyhjä, käytä 00:00:00:00:00:00
     if (ps5MacAddress.length() == 0) {
         ps5Simple.setAllowedMac("00:00:00:00:00:00");
     } else {
         ps5Simple.setAllowedMac(ps5MacAddress);
     }
+    
+    Serial.print("Loaded PS5 MAC: '");
+    Serial.print(ps5MacAddress);
+    Serial.print("', enabled: ");
+    Serial.println(ps5Enabled);
 }
 
 void initPS5() {
@@ -392,6 +406,7 @@ void setup() {
     loadPS5Config();
     
     Serial.println("Setting up Bluepad32...");
+    // NÄMÄ FUNKTIOT ON NYT MÄÄRITELTY YLHÄÄLLÄ
     BP32.setup(&onConnectedGamepad, &onDisconnectedGamepad);
     BP32.enableVirtualDevice(false);
     
