@@ -22,7 +22,7 @@
     </nav>
   </header>
 
-  <!-- index.html - korjattu versio (vain muuttunut osa) -->
+  <!-- index.html - FIRMWARE UNKNOWN poistettu -->
   <main id="machine-control" class="home">
     <div class="home-content" role="region" aria-labelledby="main-heading">
       <h1 id="main-heading">BC-250 POWER CONTROLLER</h1>
@@ -47,22 +47,18 @@
           <span id="machineStatusIndicator" class="info-value">UNKNOWN</span>
         </div>
         <div class="info-item">
-          <span class="info-label">FIRMWARE</span>
-          <span id="firmwareVersion" class="info-value">LOADING...</span>
-        </div>
-        <div class="info-item">
           <span class="info-label">DEVICE IP</span>
           <span id="deviceIpAddress" class="info-value">LOADING...</span>
         </div>
       </div>
 
-      <!-- GPIO PANEL POISTETTU KOKONAAN -->
+      <!-- FIRMWARE VERSION POISTETTU KOKONAAN -->
       
     </div>
   </main>
 
   <footer class="footer">
-    <p>© 2026 BC-250 POWER CONTROLLER </p>
+    <p>© 2026 BC-250 POWER CONTROLLER</p>
   </footer>
 
   <!-- Confirmation Dialog -->
@@ -80,11 +76,7 @@
   <script>
 const statusMsg = document.getElementById('statusMsg');
 const machineStatusIndicator = document.getElementById('machineStatusIndicator');
-const firmwareVersion = document.getElementById('firmwareVersion');
 const deviceIpAddress = document.getElementById('deviceIpAddress');
-const optoState = document.getElementById('optoState');
-const monitorState = document.getElementById('monitorState');
-const forceState = document.getElementById('forceState');
 
 const confirmDialog = document.getElementById('confirmDialog');
 const confirmShutdownBtn = document.getElementById('confirmShutdown');
@@ -118,12 +110,6 @@ async function updateMachineStatus() {
       machineStatusIndicator.style.color = "#ff4d6d";
     }
     
-    firmwareVersion.textContent = data.version || "2.0.0";
-    
-    optoState.textContent = data.optoState ? 'HIGH' : 'LOW';
-    monitorState.textContent = data.monitorState ? '5V' : '0V';
-    forceState.textContent = data.forceShutdown ? 'TRUE' : 'FALSE';
-    
     if (data.forceShutdown) {
       statusMsg.textContent = '⚠️ FORCE SHUTDOWN IN PROGRESS';
       statusMsg.className = '';
@@ -136,7 +122,6 @@ async function updateMachineStatus() {
     console.error('Status error:', error);
     machineStatusIndicator.innerHTML = "OFFLINE";
     machineStatusIndicator.style.color = "#ff4d6d";
-    firmwareVersion.textContent = "UNKNOWN";
   }
 }
 
@@ -200,7 +185,7 @@ confirmShutdownBtn.addEventListener('click', () => {
 
 confirmCancelBtn.addEventListener('click', hideShutdownDialog);
 
-// Close dialog when clicking outside (optional)
+// Close dialog when clicking outside
 window.addEventListener('click', (e) => {
   if (e.target === confirmDialog) {
     hideShutdownDialog();

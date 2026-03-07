@@ -68,6 +68,29 @@
     .btn-green:hover, .btn-red:hover {
       filter: brightness(1.2);
     }
+    
+    .mac-display {
+      background: #0a0a0f;
+      border: 2px solid #2a2a3a;
+      padding: 20px;
+      border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 1.2rem;
+      text-align: center;
+      letter-spacing: 2px;
+      color: #00d9ff;
+      margin: 15px 0;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 5px 10px;
+      background: #1a1a2a;
+      border-left: 2px solid #00d9ff;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
@@ -116,47 +139,35 @@
           <strong style="font-family:'Share Tech Mono';">ENABLE PS5 CONTROLLER SUPPORT</strong>
         </label>
         
-        <label style="display:block; margin:20px 0;">
-          <strong style="font-family:'Share Tech Mono';">CONTROLLER MAC ADDRESS:</strong>
-          
-          <!-- Get Controller Button Row -->
-          <div style="display: flex; gap: 10px; margin-top:8px; margin-bottom:8px;">
-            <input type="text" id="ps5Mac" placeholder="1a:2b:3c:01:01:01" value="" style="flex: 1; padding:15px; background:#0a0a0f; border:2px solid #2a2a3a; color:#fff; border-radius:4px; font-family:'Share Tech Mono';">
-            <button onclick="getConnectedControllerMac()" class="btn btn-green" style="padding:15px 25px; min-width:120px;" title="Get MAC from connected controller">
-              <i class='bx bx-bluetooth'></i> GET
-            </button>
-          </div>
-          
-          <!-- Clear Button -->
-          <div style="display: flex; gap: 10px; margin-top:8px;">
-            <button onclick="clearControllerMac()" class="btn btn-red" style="flex: 1; padding:12px;">
-              <i class='bx bx-trash'></i> CLEAR
-            </button>
-          </div>
-          
-          <div class="lock-hid-message">
-            <strong>🔒 LOCK HID DEVICE MAC ADDRESS</strong>
-            <div style="margin-top: 5px; color: #8899aa; font-size: 0.85rem;">
-              Enter the MAC address of your HID device to establish a secure connection.<br>
-              <span style="color:#00d9ff;">💡 TIP: Connect your controller first, then press "GET" button</span>
-            </div>
-          </div>
-        </label>
-        
         <!-- Controller Status Display -->
-        <div id="controllerStatus" class="status-message"></div>
+        <div id="controllerStatus" class="status-message" style="margin-bottom:20px;"></div>
         
-        <label style="display:flex; align-items:center; margin:20px 0; cursor:pointer;">
-          <input type="checkbox" id="ps5AutoConnect" style="width:20px; height:20px; margin-right:12px; accent-color:#00d9ff;"> 
-          <strong style="font-family:'Share Tech Mono';">AUTO RECONNECT</strong>
-        </label>
+        <!-- MAC Lock Status Display -->
+        <div id="macLockStatus" class="mac-display">
+          <span id="macAddressDisplay">--:--:--:--:--:--</span>
+        </div>
         
-        <label style="display:block; margin:20px 0;">
-          <strong style="font-family:'Share Tech Mono';">RECONNECT INTERVAL (SECONDS):</strong>
-          <input type="number" id="ps5Interval" value="30" min="5" max="300" style="width:100%; padding:15px; margin-top:8px; background:#0a0a0f; border:2px solid #2a2a3a; color:#fff; border-radius:4px; font-family:'Share Tech Mono';">
-        </label>
+        <!-- Lock/Unlock Buttons -->
+        <div style="display: flex; gap: 10px; margin: 20px 0;">
+          <button onclick="lockCurrentMac()" class="btn btn-green" style="flex: 1; padding:15px;" id="lockBtn">
+            <i class='bx bx-lock'></i> LOCK CURRENT CONTROLLER
+          </button>
+          <button onclick="unlockMac()" class="btn btn-red" style="flex: 1; padding:15px;" id="unlockBtn">
+            <i class='bx bx-lock-open'></i> REMOVE LOCK
+          </button>
+        </div>
         
-        <button onclick="savePS5()" class="btn" style="width:100%;">💾 SAVE PS5 SETTINGS</button>
+        <div class="lock-hid-message">
+          <strong>🔒 AUTOMATIC MAC LOCKING</strong>
+          <div style="margin-top: 5px; color: #8899aa; font-size: 0.85rem;">
+            <span style="color:#00d9ff;">📱 When you connect a controller, its MAC is automatically saved.</span><br>
+            <span style="color:#8899aa;">• "LOCK" button saves the currently seen controller</span><br>
+            <span style="color:#8899aa;">• "REMOVE LOCK" allows any controller again</span><br>
+            <span style="color:#ffaa00;">⚠️ Only one controller can be locked at a time</span>
+          </div>
+        </div>
+        
+        <button onclick="savePS5()" class="btn" style="width:100%; margin-top:30px;">💾 SAVE PS5 SETTINGS</button>
         <div id="ps5Status" style="margin-top:15px;"></div>
       </div>
     </div>
@@ -263,23 +274,59 @@
         console.error(e);
       }
     }
-
-    // Get connected controller MAC address
+    
+    // Hae yhdistetyn ohjaimen MAC
     async function getConnectedControllerMac() {
-      const statusDiv = document.getElementById('controllerStatus');
-      statusDiv.innerHTML = '🔍 LOOKING FOR CONNECTED CONTROLLER...';
-      statusDiv.style.borderLeftColor = '#8899aa';
-      
       try {
         const res = await fetch('/api/ps5/connected-mac');
         const data = await res.json();
         
         if (data.connected && data.macAddress) {
-          document.getElementById('ps5Mac').value = data.macAddress;
-          statusDiv.innerHTML = '✅ FOUND! MAC address added to field. Press "SAVE PS5 SETTINGS" to lock.';
-          statusDiv.style.borderLeftColor = '#00aa00';
+          return data.macAddress;
+        }
+        return null;
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    }
+    
+    // Lukitse nykyinen ohjain
+    async function lockCurrentMac() {
+      const statusDiv = document.getElementById('controllerStatus');
+      statusDiv.innerHTML = '🔍 LOOKING FOR CONTROLLER...';
+      statusDiv.style.borderLeftColor = '#8899aa';
+      
+      try {
+        const mac = await getConnectedControllerMac();
+        
+        if (mac) {
+          // Lähetä MAC tallennettavaksi
+          const config = {
+            enabled: document.getElementById('ps5Enabled').checked,
+            macAddress: mac,
+            autoConnect: false
+          };
+          
+          const res = await fetch('/api/ps5/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+          });
+          
+          if (res.ok) {
+            document.getElementById('macAddressDisplay').innerText = mac;
+            statusDiv.innerHTML = '✅ CONTROLLER LOCKED! MAC: ' + mac;
+            statusDiv.style.borderLeftColor = '#00aa00';
+            
+            // Päivitä konfiguraatio
+            loadPS5();
+          } else {
+            statusDiv.innerHTML = '❌ FAILED TO LOCK CONTROLLER';
+            statusDiv.style.borderLeftColor = '#aa0000';
+          }
         } else {
-          statusDiv.innerHTML = '❌ NO CONTROLLER CONNECTED. Connect your controller first and try again.';
+          statusDiv.innerHTML = '❌ NO CONTROLLER DETECTED. Press PS button to wake up controller.';
           statusDiv.style.borderLeftColor = '#aa0000';
         }
       } catch (e) {
@@ -289,11 +336,42 @@
       }
     }
     
-    // Clear MAC field
-    function clearControllerMac() {
-      document.getElementById('ps5Mac').value = '';
-      document.getElementById('controllerStatus').innerHTML = '🧹 MAC address cleared';
-      document.getElementById('controllerStatus').style.borderLeftColor = '#8899aa';
+    // Vapauta MAC-lukko
+    async function unlockMac() {
+      if (!confirm('Are you sure you want to remove MAC lock? This will allow ALL controllers to control the PC.')) {
+        return;
+      }
+      
+      const statusDiv = document.getElementById('controllerStatus');
+      statusDiv.innerHTML = '🔄 REMOVING MAC LOCK...';
+      statusDiv.style.borderLeftColor = '#8899aa';
+      
+      try {
+        const res = await fetch('/api/ps5/unlock', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+          // Päivitä näyttö
+          document.getElementById('macAddressDisplay').innerText = '--:--:--:--:--:--';
+          
+          statusDiv.innerHTML = '🔓 ' + data.message;
+          statusDiv.style.borderLeftColor = '#aa5500';
+          
+          // Lataa konfiguraatio uudelleen
+          loadPS5();
+        } else {
+          statusDiv.innerHTML = '❌ ERROR: ' + (data.message || 'Unknown error');
+          statusDiv.style.borderLeftColor = '#aa0000';
+        }
+      } catch (e) {
+        statusDiv.innerHTML = '❌ CONNECTION ERROR: ' + e.message;
+        statusDiv.style.borderLeftColor = '#aa0000';
+        console.error(e);
+      }
     }
     
     async function loadPS5() {
@@ -301,16 +379,17 @@
         const res = await fetch('/api/ps5/config');
         const data = await res.json();
         document.getElementById('ps5Enabled').checked = data.enabled || false;
-        document.getElementById('ps5Mac').value = data.macAddress || '';
-        document.getElementById('ps5AutoConnect').checked = data.autoConnect || false;
-        document.getElementById('ps5Interval').value = data.reconnectInterval || 30;
         
-        // Show lock status
+        // Päivitä MAC-näyttö
+        const macDisplay = document.getElementById('macAddressDisplay');
         const statusDiv = document.getElementById('controllerStatus');
+        
         if (data.macAddress && data.macAddress.length > 0) {
-          statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only controller ' + data.macAddress + ' is allowed';
+          macDisplay.innerText = data.macAddress;
+          statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only this controller is allowed';
           statusDiv.style.borderLeftColor = '#00d9ff';
         } else {
+          macDisplay.innerText = '--:--:--:--:--:--';
           statusDiv.innerHTML = '⚠️ NO MAC RESTRICTION - All controllers are allowed';
           statusDiv.style.borderLeftColor = '#aa5500';
         }
@@ -320,11 +399,14 @@
     }
     
     async function savePS5() {
+      // Haetaan nykyinen MAC näytöltä (voi olla tyhjä)
+      const macText = document.getElementById('macAddressDisplay').innerText;
+      const macAddress = macText === '--:--:--:--:--:--' ? '' : macText;
+      
       const config = {
         enabled: document.getElementById('ps5Enabled').checked,
-        macAddress: document.getElementById('ps5Mac').value.trim(),
-        autoConnect: document.getElementById('ps5AutoConnect').checked,
-        reconnectInterval: parseInt(document.getElementById('ps5Interval').value) || 30
+        macAddress: macAddress,
+        autoConnect: false
       };
       
       document.getElementById('ps5Status').innerText = '💾 SAVING...';
@@ -341,10 +423,10 @@
         if (res.ok) {
           document.getElementById('ps5Status').innerHTML = '✅ SAVED!';
           
-          // Update status
+          // Päivitä status
           const statusDiv = document.getElementById('controllerStatus');
-          if (config.macAddress && config.macAddress.length > 0) {
-            statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only controller ' + config.macAddress + ' is allowed';
+          if (macAddress.length > 0) {
+            statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only this controller is allowed';
             statusDiv.style.borderLeftColor = '#00d9ff';
           } else {
             statusDiv.innerHTML = '⚠️ NO MAC RESTRICTION - All controllers are allowed';
@@ -359,9 +441,33 @@
       }
     }
     
+    // Päivitä status säännöllisesti
+    async function updateControllerStatus() {
+      try {
+        const res = await fetch('/api/ps5/connected-mac');
+        const data = await res.json();
+        
+        const lockBtn = document.getElementById('lockBtn');
+        const currentMac = document.getElementById('macAddressDisplay').innerText;
+        
+        if (data.connected && data.macAddress) {
+          lockBtn.disabled = false;
+          if (currentMac !== data.macAddress && currentMac !== '--:--:--:--:--:--') {
+            // Näytetään että eri ohjain on lähellä
+            document.getElementById('controllerStatus').innerHTML = '📱 Different controller detected: ' + data.macAddress;
+          }
+        } else {
+          lockBtn.disabled = true;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
     window.onload = function() {
       loadWiFiStatus();
       loadPS5();
+      setInterval(updateControllerStatus, 2000);
     };
   </script>
 </body>
