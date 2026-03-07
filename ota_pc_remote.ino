@@ -10,7 +10,7 @@
 #include "ps5_simple.h"
 
 // TÄRKEÄÄ: Include pc_control.h ENSIN, jotta PowerState tunnetaan
-#include "pc_control.h"  // Tämä tuo PowerState-enumin
+#include "pc_control.h"
 
 // Globaalit muuttujat
 WebServer server(80);
@@ -28,32 +28,20 @@ bool wifiConfigured = false;
 bool apMode = false;
 
 // PS5-muuttujat
-int ps5State = 0;              // 0=disabled, 1=disconnected, 2=connecting, 3=connected
 String ps5MacAddress = "";
 bool ps5Enabled = false;
 bool ps5AutoConnect = false;
-int ps5ReconnectInterval = 30;
 unsigned long lastPS5ConnectionAttempt = 0;
-unsigned long lastPS5Update = 0;
-
-// INTERVALLIT PS5:LLE
-const unsigned long ps5UpdateIntervalPcOn = 10000;      // 10s - PC päällä
-const unsigned long ps5UpdateIntervalDisabled = 10000;  // 10s - PS5 ei käytössä
-const unsigned long ps5UpdateIntervalDisconnected = 500; // 500ms - ei yhteyttä
-const unsigned long ps5UpdateIntervalConnected = 500;   // 500ms - yhdistetty
-
-// PS5-luokka
-PS5Simple ps5Simple;
 
 // OPTIMOIDUT INTERVALLIT
 unsigned long lastPinRead = 0;
-const unsigned long pinReadInterval = 50;     // 20 Hz (napin luku)
+const unsigned long pinReadInterval = 50;
 
 unsigned long lastServerHandle = 0;
-const unsigned long serverHandleInterval = 20;  // 50 Hz (web-palvelin)
+const unsigned long serverHandleInterval = 20;
 
 unsigned long lastPcStateHandle = 0;
-const unsigned long pcStateHandleInterval = 50;  // 20 Hz (PC-tilan käsittely)
+const unsigned long pcStateHandleInterval = 50;
 
 unsigned long lastButtonDebounce = 0;
 const unsigned long debounceDelay = 50;
@@ -66,39 +54,39 @@ bool buttonPressed = false;
 // Filtteröity PC:n tila
 bool filteredPcState = false;
 unsigned long lastPcChangeTime = 0;
-const unsigned long pcStableDelay = 100; // 100ms vakautus
+const unsigned long pcStableDelay = 100;
 
-// Power-tilakoneen muuttujat - PowerState tunnetaan nyt
+// Power-tilakoneen muuttujat
 PowerState powerState = POWER_IDLE;
 unsigned long powerStateStartTime = 0;
 
-// TÄRKEÄÄ: MÄÄRITELLÄÄN CALLBACK-FUNKTIOT
+// PS5-luokka
+PS5Simple ps5Simple;
+
+// ================ PROTOTYYPIT ================
+bool getStablePcState();
+void startPowerOn();
+void startForceShutdown();
+void startNormalShutdown();
+void savePS5Config(bool enabled, String mac, bool autoConnect);  // LISÄÄ TÄMÄ RIVI
+
+// ================ CALLBACK-FUNKTIOT ================
 void onConnectedGamepad(GamepadPtr gp) {
-    Serial.println("Gamepad connected!");
-    
-    // Haetaan MAC-osoite GamepadProperties-rakenteesta
-    GamepadProperties properties = gp->getProperties();
-    Serial.printf("Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
-                  properties.btaddr[0], properties.btaddr[1], 
-                  properties.btaddr[2], properties.btaddr[3],
-                  properties.btaddr[4], properties.btaddr[5]);
-    
-    Serial.print("Gamepad model: ");
-    Serial.println(gp->getModelName());
-    
-    ps5Simple.setController(gp);
+    Serial.println("=== UUSI OHJAIN HAVAITTU ===");
+    if (gp != nullptr) {
+        ps5Simple.onControllerConnected(gp);
+    }
 }
 
 void onDisconnectedGamepad(GamepadPtr gp) {
-    Serial.println("Gamepad disconnected!");
-    ps5Simple.clearController();
+    Serial.println("=== OHJAIN IRROTTUNUT ===");
+    ps5Simple.onControllerDisconnected(gp);
 }
 
 #include "web_server.h"
 
 // ================ WiFi-konfiguraatio ================
 
-// WiFi-konfiguraation tallennus ARDUINOJSONILLA
 void saveWiFiConfig(String ssid, String pass) {
     File file = LittleFS.open("/wifi_config.json", "w");
     if (!file) return;
@@ -115,7 +103,6 @@ void saveWiFiConfig(String ssid, String pass) {
     wifiConfigured = true;
 }
 
-// WiFi-konfiguraation lataus ARDUINOJSONILLA
 void loadWiFiConfig() {
     if (!LittleFS.begin(true)) {
         wifiConfigured = false;
@@ -149,7 +136,6 @@ void loadWiFiConfig() {
     apMode = !wifiConfigured;
 }
 
-// WiFi-yhteys
 bool connectToWiFi() {
     loadWiFiConfig();
     
@@ -184,7 +170,6 @@ bool connectToWiFi() {
 
 // ================ PC-tilan suodatus ================
 
-// Yksinkertainen PC-tilan suodatus
 bool getStablePcState() {
     static bool lastRawState = false;
     
@@ -206,15 +191,13 @@ bool getStablePcState() {
 
 // ================ PS5-funktiot ================
 
-// PS5 konfiguraation tallennus ARDUINOJSONILLA
-void savePS5Config(bool enabled, String mac, bool autoConnect, int interval) {
+void savePS5Config(bool enabled, String mac, bool autoConnect) {
     File file = LittleFS.open("/ps5_config.json", "w");
     if (!file) return;
     
     StaticJsonDocument<300> doc;
     doc["enabled"] = enabled;
     
-    // Jos MAC on tyhjä, tallennetaan tyhjä string (ei 00:00:00:00:00:00)
     if (mac.length() == 0 || mac == "00:00:00:00:00:00") {
         doc["macAddress"] = "";
     } else {
@@ -222,7 +205,6 @@ void savePS5Config(bool enabled, String mac, bool autoConnect, int interval) {
     }
     
     doc["autoConnect"] = autoConnect;
-    doc["reconnectInterval"] = interval;
     
     serializeJson(doc, file);
     file.close();
@@ -230,24 +212,17 @@ void savePS5Config(bool enabled, String mac, bool autoConnect, int interval) {
     ps5Enabled = enabled;
     ps5MacAddress = (mac.length() == 0 || mac == "00:00:00:00:00:00") ? "" : mac;
     ps5AutoConnect = autoConnect;
-    ps5ReconnectInterval = interval;
     
-    // Päivitä sallittu MAC (käytä 00:00:00:00:00:00 jos tyhjä)
-    if (ps5MacAddress.length() == 0) {
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");
-    } else {
-        ps5Simple.setAllowedMac(ps5MacAddress);
-    }
+    ps5Simple.setAllowedMac(ps5MacAddress);
 }
 
-// PS5 konfiguraation lataus ARDUINOJSONILLA
 void loadPS5Config() {
     if (!LittleFS.exists("/ps5_config.json")) {
         ps5Enabled = false;
         ps5MacAddress = "";
         ps5AutoConnect = false;
-        ps5ReconnectInterval = 30;
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");  // Kaikki sallittu
+        ps5Simple.setAllowedMac("");
+        Serial.println("PS5: Ei konfiguraatiota - kaikki ohjaimet sallittu");
         return;
     }
     
@@ -262,102 +237,21 @@ void loadPS5Config() {
         ps5Enabled = false;
         ps5MacAddress = "";
         ps5AutoConnect = false;
-        ps5ReconnectInterval = 30;
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");  // Kaikki sallittu
+        ps5Simple.setAllowedMac("");
+        Serial.println("PS5: Konfiguraatio virheellinen - kaikki ohjaimet sallittu");
         return;
     }
     
     ps5Enabled = doc["enabled"] | false;
     ps5MacAddress = doc["macAddress"] | "";
     ps5AutoConnect = doc["autoConnect"] | false;
-    ps5ReconnectInterval = doc["reconnectInterval"] | 30;
     
-    // Jos MAC on tyhjä, käytä 00:00:00:00:00:00
-    if (ps5MacAddress.length() == 0) {
-        ps5Simple.setAllowedMac("00:00:00:00:00:00");
-    } else {
-        ps5Simple.setAllowedMac(ps5MacAddress);
-    }
+    ps5Simple.setAllowedMac(ps5MacAddress);
     
-    Serial.print("Loaded PS5 MAC: '");
+    Serial.print("PS5: Lataus valmis - MAC: '");
     Serial.print(ps5MacAddress);
     Serial.print("', enabled: ");
     Serial.println(ps5Enabled);
-}
-
-void initPS5() {
-    if (!ps5Enabled || ps5MacAddress.length() == 0 || getStablePcState()) {
-        ps5State = 0;
-        return;
-    }
-    
-    if (ps5State == 0) {
-        ps5State = 1;
-        lastPS5ConnectionAttempt = millis();
-    }
-}
-
-// PS5 handler - optimoitu versio
-void handlePS5() {
-    unsigned long now = millis();
-    unsigned long interval;
-    
-    // 1. TARKISTETAAN PC:N TILA ENSIN
-    bool pcOn = getStablePcState();
-    
-    // 2. VALITAAN INTERVALLI TILAN MUKAAN
-    if (pcOn) {
-        interval = ps5UpdateIntervalPcOn;
-    } else if (!ps5Enabled || ps5MacAddress.length() == 0) {
-        interval = ps5UpdateIntervalDisabled;
-    } else if (ps5Simple.isConnected()) {
-        interval = ps5UpdateIntervalConnected;
-    } else {
-        interval = ps5UpdateIntervalDisconnected;
-    }
-    
-    // 3. TARKISTETAAN ONKO AIKA PÄIVITTÄÄ
-    if (now - lastPS5Update < interval) return;
-    lastPS5Update = now;
-    
-    // 4. PC PÄÄLLÄ - POISTETAAN KÄYTÖSTÄ
-    if (pcOn) {
-        if (ps5Simple.isConnected()) {
-            ps5Simple.disconnect();
-        }
-        return;
-    }
-    
-    // 5. PS5 EI KÄYTÖSSÄ
-    if (!ps5Enabled || ps5MacAddress.length() == 0) {
-        if (ps5Simple.isConnected()) {
-            ps5Simple.disconnect();
-        }
-        return;
-    }
-    
-    // 6. PÄIVITETÄÄN BLUEPAD32
-    ps5Simple.update();
-    
-    // 7. YRITETÄÄN YHDISTÄÄ JOS EI YHTEYTTÄ
-    if (!ps5Simple.isConnected()) {
-        ps5Simple.begin(ps5MacAddress);
-        return;
-    }
-    
-    // 8. LUETAAN PS-NAPPI
-    static bool lastButtonState = false;
-    bool currentButton = ps5Simple.readPSButton();
-    
-    if (currentButton && !lastButtonState) {
-        static unsigned long lastPress = 0;
-        if (now - lastPress > 2000) {
-            lastPress = now;
-            ps5Simple.rumbleShort();
-            startPowerOn();
-        }
-    }
-    lastButtonState = currentButton;
 }
 
 // ================ SETUP ================
@@ -375,7 +269,6 @@ void setup() {
     Serial.print("OPTO_PIN (16): ");
     Serial.println(digitalRead(OPTO_PIN) ? "HIGH" : "LOW");
     
-    // Alustetaan PC:n tila
     filteredPcState = digitalRead(PC_MONITOR_PIN);
     pcIsOn = filteredPcState;
     
@@ -402,15 +295,16 @@ void setup() {
         Serial.println("LittleFS mounted");
     }
 
-    Serial.println("Loading PS5 config...");
-    loadPS5Config();
-    
     Serial.println("Setting up Bluepad32...");
-    // NÄMÄ FUNKTIOT ON NYT MÄÄRITELTY YLHÄÄLLÄ
+    
+    // VAIN NÄMÄ KAKSI RIVIÄ TARVITAAN
     BP32.setup(&onConnectedGamepad, &onDisconnectedGamepad);
     BP32.enableVirtualDevice(false);
     
-    initPS5();
+    Serial.println("Loading PS5 config...");
+    loadPS5Config();
+    
+    Serial.println("Bluepad32 ready - waiting for controller pairing");
     
     Serial.println("Setting up web server...");
     setupWebServer();
@@ -423,29 +317,29 @@ void setup() {
 void loop() {
     unsigned long now = millis();
     
-    // Lue BUTTON_PIN - 20 Hz
+    // Lue BUTTON_PIN
     if (now - lastPinRead >= pinReadInterval) {
         cachedButtonState = digitalRead(BUTTON_PIN);
         lastPinRead = now;
     }
     
-    // Käsittele PC:n tilat - 20 Hz
+    // Käsittele PC:n tilat
     if (now - lastPcStateHandle >= pcStateHandleInterval) {
         handlePcStates();
         lastPcStateHandle = now;
     }
     
-    // Käsittele power-tilat - AINA
+    // Käsittele power-tilat
     handlePowerStates();
     
-    // Web-palvelin - 50 Hz
+    // Web-palvelin
     if (now - lastServerHandle >= serverHandleInterval) {
         server.handleClient();
         lastServerHandle = now;
     }
     
     // PS5 päivitys
-    handlePS5();
+    ps5Simple.handle();
     
     // Painikkeen käsittely debouncella
     if (cachedButtonState != lastStableButtonState) {

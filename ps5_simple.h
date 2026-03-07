@@ -3,187 +3,212 @@
 
 #include <Bluepad32.h>
 #include <Arduino.h>
+#include <ArduinoJson.h>
+#include "LittleFS.h"
 
-// Vakio "kaikki sallittu" MAC-osoitteelle
-#define MAC_ALL_ALLOWED "00:00:00:00:00:00"
+// TÄRKEÄÄ: Include pc_control.h ENSIN, jotta PowerState tunnetaan
+#include "pc_control.h"
+
+// TÄRKEÄÄ: Nämä ovat ulkoisia muuttujia/funktioita, jotka määritellään muualla
+extern bool ps5Enabled;
+extern String ps5MacAddress;
+extern bool getStablePcState();
+extern void startPowerOn();
+extern PowerState powerState;
+extern void savePS5Config(bool enabled, String mac, bool autoConnect);
 
 class PS5Simple {
 private:
     GamepadPtr myController = nullptr;
-    bool connected = false;
-    String allowedMacAddress = "";
-    String currentControllerMac = "";
+    String allowedMac = "";           // Tallennettu MAC (tyhjä = kaikki sallittu)
+    String lastSeenMac = "";          // Viimeksi nähty MAC
+    unsigned long lastSeenTime = 0;   // Milloin viimeksi nähty
+    bool macAutoSaved = false;        // Onko MAC jo automaattisesti tallennettu
     
 public:
+    // Asetetaan sallittu MAC (tyhjä = kaikki sallittu)
     void setAllowedMac(String mac) {
-        // Alkuperäinen MAC sellaisenaan
-        allowedMacAddress = mac;
-        allowedMacAddress.trim();
+        mac.trim();
+        mac.replace(":", "");
+        mac.replace("-", "");
+        mac.toUpperCase();
         
-        // Jos MAC on tyhjä, muuta se ALL_ALLOWED muotoon
-        if (allowedMacAddress.length() == 0) {
-            allowedMacAddress = MAC_ALL_ALLOWED;
-            Serial.println("🔓 MAC lock disabled (empty) - all controllers allowed");
-            return;
-        }
-        
-        // Tarkista onko kyseessä ALL_ALLOWED
-        String tempMac = allowedMacAddress;
-        tempMac.replace(":", "");
-        tempMac.replace("-", "");
-        tempMac.toUpperCase();
-        
-        if (tempMac == "000000000000") {
-            Serial.println("🔓 MAC lock disabled (00:00:00:00:00:00) - all controllers allowed");
-            return;
-        }
-        
-        // Muuten kyseessä on oikea MAC-lukitus
-        // Normalisoidaan MAC-osoite (poistetaan erikoismerkit)
-        allowedMacAddress.replace(":", "");
-        allowedMacAddress.replace("-", "");
-        allowedMacAddress.toUpperCase();
-        
-        Serial.println("🔒 MAC lock enabled: " + allowedMacAddress);
-    }
-    
-    String getAllowedMac() {
-        // Palautetaan alkuperäinen muoto (kutsujan kannalta)
-        if (allowedMacAddress == MAC_ALL_ALLOWED || allowedMacAddress.length() == 0) {
-            return "";
-        }
-        
-        // Muotoillaan MAC takaisin xx:xx:xx:xx:xx:xx muotoon näyttöä varten
-        String formatted = allowedMacAddress;
-        if (formatted.length() == 12) {
-            String result = "";
-            for (int i = 0; i < 12; i += 2) {
-                if (i > 0) result += ":";
-                result += formatted.substring(i, i+2);
-            }
-            return result;
-        }
-        return allowedMacAddress;
-    }
-    
-    String getControllerMac() {
-        return currentControllerMac;
-    }
-    
-    bool begin(String mac) {
-        Serial.println("PS5: Initializing...");
-        setAllowedMac(mac);
-        connected = false;
-        return true;
-    }
-    
-    void disconnect() {
-        if (myController != nullptr) {
-            myController->disconnect();
-            myController = nullptr;
-        }
-        connected = false;
-        currentControllerMac = "";
-    }
-    
-    bool isConnected() {
-        return (myController != nullptr && myController->isConnected());
-    }
-    
-    void setController(GamepadPtr gp) {
-        // HAETAAN MAC-OSOITE GamepadProperties-rakenteesta
-        GamepadProperties properties = gp->getProperties();
-        
-        // Muodosta MAC-osoite stringiksi properties.btaddr taulukosta
-        char macStr[18];
-        sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-                properties.btaddr[0], properties.btaddr[1], 
-                properties.btaddr[2], properties.btaddr[3],
-                properties.btaddr[4], properties.btaddr[5]);
-        currentControllerMac = String(macStr);
-        
-        Serial.print("Controller identifier: ");
-        Serial.println(currentControllerMac);
-        Serial.print("Gamepad model: ");
-        Serial.println(gp->getModelName());
-        
-        // Tarkista onko MAC-lukitus käytössä
-        bool macLockEnabled = (allowedMacAddress != MAC_ALL_ALLOWED && 
-                               allowedMacAddress.length() > 0 && 
-                               allowedMacAddress != "000000000000");
-        
-        if (macLockEnabled) {
-            // MAC LUKITUS ON KÄYTÖSSÄ
-            String macForCompare = currentControllerMac;
-            macForCompare.replace(":", "");
-            macForCompare.replace("-", "");
-            macForCompare.toUpperCase();
-            
-            Serial.print("Comparing with allowed: ");
-            Serial.println(allowedMacAddress);
-            
-            if (macForCompare != allowedMacAddress) {
-                Serial.println("⛔ UNAUTHORIZED CONTROLLER REJECTED!");
-                gp->disconnect();
-                return;
-            } else {
-                Serial.println("✅ Authorized controller accepted");
-            }
+        if (mac.length() == 0 || mac == "000000000000") {
+            allowedMac = "";
+            Serial.println("PS5: Kaikki ohjaimet sallittu");
         } else {
-            // EI MAC LUKITUSTA - SALLITAAN KAIKKI
-            Serial.println("🔓 No MAC restriction - allowing all controllers");
+            allowedMac = mac;
+            Serial.println("PS5: Vain MAC " + allowedMac + " sallittu");
         }
-        
-        // HYVÄKSYTÄÄN OHJAIN
-        myController = gp;
-        connected = true;
-        Serial.println("✅ PS5 controller connected!");
-        
-        // Kevyt värinä
-        playRumble(50, 100);
+        macAutoSaved = false;
     }
     
-    void clearController() {
-        myController = nullptr;
-        connected = false;
-        currentControllerMac = "";
-        Serial.println("PS5 controller disconnected!");
+    // Palauta sallittu MAC muotoiltuna
+    String getAllowedMac() {
+        if (allowedMac.length() != 12) return "";
+        
+        String formatted = "";
+        for (int i = 0; i < 12; i += 2) {
+            if (i > 0) formatted += ":";
+            formatted += allowedMac.substring(i, i+2);
+        }
+        return formatted;
     }
     
-    bool readPSButton() {
-        if (!isConnected()) return false;
-        
-        uint8_t misc = myController->miscButtons();
-        
-        if (misc & 0x01) {
-            Serial.println("PS BUTTON PRESSED!");
-            return true;
-        }
-        
+    // Yhdistetyn ohjaimen MAC
+    String getConnectedMac() {
+        return lastSeenMac;
+    }
+    
+    // Onko ohjain yhdistetty? (Katsotaan onko viime näkemästä alle 5 sekuntia)
+    bool isConnected() {
+        if (lastSeenMac.length() == 0) return false;
+        if (millis() - lastSeenTime < 5000) return true;
         return false;
     }
     
-    void playRumble(uint16_t delayedStartMs, uint8_t durationMs) {
-        if (!isConnected()) return;
+    // Katkaise yhteys
+    void disconnect() {
+        // Ei tehdä mitään - ohjain katkaisee itse yhteyden
+    }
+    
+    // UUSI OHJAIN HAVAITTU
+    void onControllerConnected(GamepadPtr gp) {
+        if (gp == nullptr) return;
         
-        myController->playDualRumble(
-            delayedStartMs,
-            durationMs,
-            0xFF,
-            0xFF
-        );
+        // TÄRKEÄÄ: Tarkista onko PC päällä
+        bool pcOn = getStablePcState();
+        
+        if (pcOn || powerState != POWER_IDLE) {
+            Serial.println("PS5: PC ON - OHJAINTA EI HYVÄKSYTÄ");
+            gp->disconnect();
+            return;
+        }
+        
+        // Haetaan MAC-osoite
+        GamepadProperties prop = gp->getProperties();
+        char macStr[18];
+        sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+                prop.btaddr[0], prop.btaddr[1], prop.btaddr[2],
+                prop.btaddr[3], prop.btaddr[4], prop.btaddr[5]);
+        
+        String mac = String(macStr);
+        Serial.print("PS5: Ohjain havaittu - MAC: ");
+        Serial.println(mac);
+        
+        // Poistetaan erottimet vertailua varten
+        String macClean = mac;
+        macClean.replace(":", "");
+        macClean.replace("-", "");
+        macClean.toUpperCase();
+        
+        // TARKISTETAAN MAC
+        bool sallittu = false;
+        
+        if (allowedMac.length() == 0) {
+            sallittu = true;
+        }
+        else if (macClean == allowedMac) {
+            sallittu = true;
+        }
+        
+        if (sallittu) {
+            // TALLENNETAAN MAC
+            lastSeenMac = mac;
+            lastSeenTime = millis();
+            Serial.println("✅ PS5: Sallittu MAC havaittu!");
+            
+            // AUTOMAATTINEN TALLENNUS: Jos MAC-lukko ei ole päällä, tallenna tämä MAC
+            if (allowedMac.length() == 0 && !macAutoSaved) {
+                Serial.println("PS5: Ei MAC-lukkoa - tallennetaan tama MAC automaattisesti!");
+                
+                // Tallennetaan MAC konfiguraatioon
+                ps5MacAddress = mac;
+                savePS5Config(true, mac, false);
+                
+                // Päivitetään myös oma allowedMac
+                setAllowedMac(mac);
+                
+                macAutoSaved = true;
+                Serial.println("✅ PS5: MAC tallennettu automaattisesti!");
+            }
+            
+            // HYLÄTÄÄN YHTEYS TAHALLA
+            if (gp != nullptr) {
+                gp->disconnect();
+                Serial.println("PS5: Yhteys katkaistaan - kaytetaan vain MAC-tietoa");
+            }
+        } else {
+            Serial.println("❌ PS5: Hylatty MAC - ei sallittu");
+            if (gp != nullptr) {
+                gp->disconnect();
+            }
+        }
     }
     
-    void rumbleShort() {
-        playRumble(20, 50);
+    // OHJAIN IRROTTUNUT
+    void onControllerDisconnected(GamepadPtr gp) {
+        Serial.println("PS5: Ohjain irrotettu");
     }
     
-    void rumbleLong() {
-        playRumble(50, 400);
+    // TARKISTETAAN ONKO SALLITTU OHJAIN LÄHETTYVILLÄ
+    bool isAuthorizedControllerNearby() {
+        return isConnected();
     }
     
-    void update() {
+    // "Lue PS-nappi" - palauttaa true jos sallittu ohjain lähellä
+    bool psButtonPressed() {
+        return isAuthorizedControllerNearby();
+    }
+    
+    // PÄÄSÄHKIN
+    void handle() {
+        // Päivitä Bluepad32
         BP32.update();
+        
+        // Tarkista PC:n tila
+        bool pcOn = getStablePcState();
+        
+        // JOS PC ON PÄÄLLÄ, NOLLATAAN KAIKKI OHJAINTIEDOT
+        if (pcOn || powerState != POWER_IDLE) {
+            if (lastSeenMac.length() > 0) {
+                Serial.println("PS5: PC ON - nollataan ohjaintiedot");
+                lastSeenMac = "";
+                lastSeenTime = 0;
+                macAutoSaved = false;
+            }
+            return;
+        }
+        
+        // Jos PS5 ei käytössä, älä tee mitään
+        if (!ps5Enabled) {
+            return;
+        }
+        
+        unsigned long now = millis();
+        
+        // Jos sallittu ohjain on lähellä
+        if (isAuthorizedControllerNearby()) {
+            static unsigned long lastTriggerTime = 0;
+            
+            // Jos viime näkemästä on alle 2 sekuntia ja edellisestä triggeristä yli 5s
+            if (now - lastSeenTime < 2000 && now - lastTriggerTime > 5000) {
+                Serial.println("PS5: Sallittu ohjain lahella - kaynnistetaan PC!");
+                lastTriggerTime = now;
+                startPowerOn();
+            }
+        }
+        
+        // Tulosta vain harvoin
+        static unsigned long lastPrint = 0;
+        if (now - lastPrint > 10000 && ps5Enabled) {
+            if (isAuthorizedControllerNearby()) {
+                Serial.println("PS5: Sallittu ohjain lahella...");
+            } else {
+                Serial.println("PS5: Odotetaan ohjainta...");
+            }
+            lastPrint = now;
+        }
     }
 };
 

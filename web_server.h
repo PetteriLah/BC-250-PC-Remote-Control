@@ -15,16 +15,13 @@ extern bool shutdownRequested;
 extern bool forceShutdown;
 extern PowerState powerState;  // Tämä on nyt tunnistettu
 extern unsigned long powerStateStartTime;
-extern int ps5State;
 extern String ps5MacAddress;
 extern bool ps5Enabled;
 extern bool ps5AutoConnect;
-extern int ps5ReconnectInterval;
 extern String wifiSSID;
 extern String wifiPassword;
 extern bool wifiConfigured;
 extern bool apMode;
-
 
 String indexHtml = "";
 String updateHtml = "";
@@ -78,22 +75,18 @@ void setupWebServer() {
         server.send(200, "text/css", styleCss);
     });
 
-// web_server.h - lisää muiden staattisten sivujen jälkeen
-
-server.on("/steam-machines.svg", []() {
-    // Jos tiedosto on LittleFS:ssä
-    if (LittleFS.exists("/steam-machines.svg")) {
-        File file = LittleFS.open("/steam-machines.svg", "r");
-        server.streamFile(file, "image/svg+xml");
-        file.close();
-    } else {
-        // Jos tiedostoa ei ole, palautetaan 404 tai yksinkertainen SVG
-        server.send(200, "image/svg+xml", 
-            "<svg width='180' height='50' xmlns='http://www.w3.org/2000/svg'>"
-            "<text x='10' y='35' font-family='Share Tech Mono' font-size='24' fill='#00d9ff'>BC-250</text>"
-            "</svg>");
-    }
-});
+    server.on("/steam-machines.svg", []() {
+        if (LittleFS.exists("/steam-machines.svg")) {
+            File file = LittleFS.open("/steam-machines.svg", "r");
+            server.streamFile(file, "image/svg+xml");
+            file.close();
+        } else {
+            server.send(200, "image/svg+xml", 
+                "<svg width='180' height='50' xmlns='http://www.w3.org/2000/svg'>"
+                "<text x='10' y='35' font-family='Share Tech Mono' font-size='24' fill='#00d9ff'>BC-250</text>"
+                "</svg>");
+        }
+    });
 
     // API: Bluetooth MAC-osoite
     server.on("/api/bluetooth/mac", HTTP_GET, []() {
@@ -263,7 +256,6 @@ server.on("/steam-machines.svg", []() {
         doc["macAddress"] = ps5MacAddress;
         doc["enabled"] = ps5Enabled;
         doc["autoConnect"] = ps5AutoConnect;
-        doc["reconnectInterval"] = ps5ReconnectInterval;
         
         String response;
         serializeJson(doc, response);
@@ -290,45 +282,78 @@ server.on("/steam-machines.svg", []() {
         bool enabled = doc["enabled"] | false;
         const char* mac = doc["macAddress"];
         bool autoConnect = doc["autoConnect"] | false;
-        int interval = doc["reconnectInterval"] | 30;
         
         String macStr = mac ? String(mac) : "";
         
-        savePS5Config(enabled, macStr, autoConnect, interval);
+        savePS5Config(enabled, macStr, autoConnect);
         server.send(200, "text/plain", "OK");
     });
 
     // PS5 status
+// PS5 status
     server.on("/api/ps5/status", HTTP_GET, []() {
         String stateStr = "unknown";
-        if (!ps5Enabled) stateStr = "disabled";
-        else if (ps5State == 1) stateStr = "disconnected";
-        else if (ps5State == 2) stateStr = "connecting";
-        else if (ps5State == 3) stateStr = "connected";
+        
+        // Määritellään tila PS5Simple-luokan perusteella
+        if (!ps5Enabled) {
+            stateStr = "disabled";
+        } else if (ps5Simple.isConnected()) {
+            stateStr = "connected";
+        } else {
+            stateStr = "disconnected";
+        }
         
         StaticJsonDocument<200> doc;
         doc["state"] = stateStr;
         doc["macAddress"] = ps5MacAddress;
         doc["btAllowed"] = !getStablePcState();
+        doc["connectedMac"] = ps5Simple.getConnectedMac();
         
         String response;
         serializeJson(doc, response);
         server.send(200, "application/json", response);
     });
 
-
-    // API: Hae yhdistetyn ohjaimen MAC-osoite - ILMAN MAC-HAKUA
-    server.on("/api/ps5/connected-mac", HTTP_GET, []() {
-        StaticJsonDocument<200> doc;
+    // API: Hae yhdistetyn ohjaimen MAC-osoite
+// API: Hae yhdistetyn ohjaimen MAC-osoite
+server.on("/api/ps5/connected-mac", HTTP_GET, []() {
+    StaticJsonDocument<200> doc;
+    
+    if (ps5Simple.isConnected()) {
+        // Haetaan yhdistetyn ohjaimen MAC-osoite
+        String controllerMac = ps5Simple.getConnectedMac();
         
-        if (ps5Simple.isConnected()) {
+        if (controllerMac.length() > 0) {
+            doc["connected"] = true;
+            doc["macAddress"] = controllerMac;
+            doc["note"] = "MAC address retrieved successfully";
+        } else {
             doc["connected"] = true;
             doc["macAddress"] = "";
-            doc["note"] = "MAC address not available in this Bluepad32 version. Enter manually.";
-        } else {
-            doc["connected"] = false;
-            doc["macAddress"] = "";
+            doc["note"] = "Connected but MAC not available - enter manually";
         }
+    } else {
+        doc["connected"] = false;
+        doc["macAddress"] = "";
+        doc["note"] = "No controller connected";
+    }
+    
+    String response;
+    serializeJson(doc, response);
+    server.send(200, "application/json", response);
+}); 
+
+    // API: Vapauta MAC-lukko (aseta tyhjäksi)
+    server.on("/api/ps5/unlock", HTTP_POST, []() {
+        Serial.println("PS5: MAC-lukko vapautetaan");
+        
+        // Tallennetaan tyhjä MAC (kaikki sallittu)
+        savePS5Config(ps5Enabled, "", ps5AutoConnect);
+        
+        // Lähetä vastaus
+        StaticJsonDocument<100> doc;
+        doc["status"] = "ok";
+        doc["message"] = "MAC lock removed - all controllers allowed";
         
         String response;
         serializeJson(doc, response);
@@ -338,4 +363,4 @@ server.on("/steam-machines.svg", []() {
     server.begin();
 }
 
-#endif
+#endif // WEB_SERVER_H
