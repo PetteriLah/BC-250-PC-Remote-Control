@@ -35,4 +35,7 @@ Extract the downloaded ZIP file.
 Rename the extracted folder to LITTLEFS (note the all-caps name).
 Move this LITTLEFS folder into your Arduino libraries folder.
 
-    Find "esp32 by Espressif Systems" and click Install. (Version 2.0.x or higher is recommended).
+Installation ArduinoJson Library
+
+Open Library Manager: Go to Sketch > Include Library > Manage Libraries... (or click the library icon in the left sidebar)
+Type ArduinoJson in the search field
