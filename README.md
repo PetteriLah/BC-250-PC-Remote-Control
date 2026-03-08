@@ -10,14 +10,11 @@ Key Features
     Over-the-Air Updates: Firmware updates via web interface
 
 Installation
-    Installing the ESP32-S3 Board in Arduino IDE
 
-Before installing libraries, you need to add the ESP32 platform to your Arduino IDE.
+Before installing libraries, you need to add the ESP32_bluepad32 platform to your Arduino IDE.
 
     Open Arduino IDE.
-
     Go to File > Preferences (or Arduino IDE > Settings on macOS).
-
     In the "Additional Boards Manager URLs" field, paste the following URL:
     text
 ```
