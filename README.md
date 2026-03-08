@@ -8,3 +8,29 @@ Key Features
     WiFi Configuration: Web-based setup with network scanning
     MAC Address Locking: Restrict controller access to specific devices
     Over-the-Air Updates: Firmware updates via web interface
+
+Installation
+    Installing the ESP32-S3 Board in Arduino IDE
+
+Before installing libraries, you need to add the ESP32 platform to your Arduino IDE.
+
+    Open Arduino IDE.
+
+    Go to File > Preferences (or Arduino IDE > Settings on macOS).
+
+    In the "Additional Boards Manager URLs" field, paste the following URL:
+    text
+```
+    https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json ,https://raw.githubusercontent.com/ricardoquesada/esp32-arduino-lib-builder/master/bluepad32_files/package_esp32_bluepad32_index.json 
+```
+    (If you already have other URLs there, separate them with a comma).
+
+    Click OK.
+
+    Go to Tools > Board > Boards Manager.
+    In the search bar, type "esp32_bluepad32".
+
+
+    In the search bar, type "ESP32".
+
+    Find "esp32 by Espressif Systems" and click Install. (Version 2.0.x or higher is recommended).
