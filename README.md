@@ -11,8 +11,7 @@ Key Features
 
 Installation
 
-Before installing libraries, you need to add the ESP32_bluepad32 platform to your Arduino IDE.
-[Read more ESP32_bluepad32](https://github.com/ricardoquesada/bluepad32)'
+Before installing libraries, you need to add the [ESP32_bluepad32](https://github.com/ricardoquesada/bluepad32) platform to your Arduino IDE.
 
     Open Arduino IDE.
     Go to File > Preferences (or Arduino IDE > Settings on macOS).
@@ -28,8 +27,7 @@ Before installing libraries, you need to add the ESP32_bluepad32 platform to you
     Go to Tools > Board > Boards Manager.
     In the search bar, type "esp32_bluepad32".
 
-installing LittleFS (for ESP32)
-
+installing [LittleFS (for ESP32)](https://github.com/lorol/LITTLEFS) 
 The LittleFS library is used to serve the web interface files. The version in the Library Manager is not always compatible with ESP32.
 
     Go to the GitHub repository for the ESP32 version: https://github.com/lorol/LITTLEFS
