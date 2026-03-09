@@ -35,7 +35,9 @@ Extract the downloaded ZIP file.
 Rename the extracted folder to LITTLEFS (note the all-caps name).
 Move this LITTLEFS folder into your Arduino libraries folder.
 
-Installation ArduinoJson Library
+<img width="882" height="1625" alt="kuva" src="https://github.com/user-attachments/assets/1544a9e2-1a29-4ba2-bede-efac3149f9f3" />
+Web
+
 
 Open Library Manager: Go to Sketch > Include Library > Manage Libraries... (or click the library icon in the left sidebar)
 Type ArduinoJson in the search field
