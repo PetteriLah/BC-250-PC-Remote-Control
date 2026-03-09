@@ -19,25 +19,17 @@ In the "Additional Boards Manager URLs" field, paste the following URL:
 ```
     https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json ,https://raw.githubusercontent.com/ricardoquesada/esp32-arduino-lib-builder/master/bluepad32_files/package_esp32_bluepad32_index.json 
 ```
-(If you already have other URLs there, separate them with a comma).
-Click OK.
 
 Go to Tools > Board > Boards Manager.
 In the search bar, type "esp32_bluepad32".
-Click OK.
 
-installing [LittleFS (for ESP32)](https://github.com/lorol/LITTLEFS) 
-The LittleFS library is used to serve the web interface files. The version in the Library Manager is not always compatible with ESP32.
 
-Go to the GitHub repository for the ESP32 version: https://github.com/lorol/LITTLEFS
-Click the green "Code" button and select "Download ZIP".
-Extract the downloaded ZIP file.
-Rename the extracted folder to LITTLEFS (note the all-caps name).
-Move this LITTLEFS folder into your Arduino libraries folder.
+install Library 
+[LittleFS (for ESP32)](https://github.com/lorol/LITTLEFS) 
+ArduinoJson 
 
 <img width="882" height="1625" alt="kuva" src="https://github.com/user-attachments/assets/1544a9e2-1a29-4ba2-bede-efac3149f9f3" />
 Web
 
 
-Open Library Manager: Go to Sketch > Include Library > Manage Libraries... (or click the library icon in the left sidebar)
-Type ArduinoJson in the search field
+
