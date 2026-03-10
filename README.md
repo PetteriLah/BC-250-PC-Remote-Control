@@ -1,4 +1,4 @@
-# BC-250-PC-Remote-Control
+# BC-250 REMOTE PSU POWER CONTROLLER
 ESP32-based device for remote control of the BC-250 atx power supply with web interface and PS5 controller support.
 
 Key Features
