@@ -2,12 +2,11 @@
 #define PINS_H
 
 // kortin pinnit
-#define OPTO_PIN 16 // >> EL357N-C NPN output 5V >> AXT Power supply PS_ON (Green)
-#define STATUS_LED_PIN 2 // >> OPTIONAL
-#define POWER_LED_PIN 13 // >> POWER BUTTON LED
-#define BUTTON_PIN 12 // >> MOMENTARY POWER BUTTON 
-#define PC_MONITOR_PIN 14 // >> BC-250 TPMS1 PIN9 3V
-
-
+#define OPTO_PIN 16 // >> DEVBOARD RELAY1 (Outermost) >> AXT Power supply PS_ON (Green) TO GROUND 
+#define STATUS_LED_PIN 2 // >> OPTIONAL STATUS LED
+#define POWER_LED_PIN 23 // >> POWER BUTTON LED
+#define BUTTON_PIN 22 // >> MOMENTARY POWER BUTTON
+#define PC_MONITOR_PIN 4 // >> BC-250 TPMS1 PIN9 3V TO T
+#define EXTRA_PIN 17 // DEVBOARD RELAY2 BC-POWER BUTTON TO GROUNG
 
 #endif

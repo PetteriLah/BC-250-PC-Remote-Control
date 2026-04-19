@@ -5,7 +5,7 @@
 #include <Update.h>
 #include "LittleFS.h"
 #include <ArduinoJson.h>
-#include "pc_control.h"  // Tämä tuo PowerState-määrittelyn
+#include "pc_control.h"
 #include "version.h"
 #include "pins.h"
 
@@ -13,7 +13,7 @@ extern WebServer server;
 extern bool pcIsOn;
 extern bool shutdownRequested;
 extern bool forceShutdown;
-extern PowerState powerState;  // Tämä on nyt tunnistettu
+extern PowerState powerState;
 extern unsigned long powerStateStartTime;
 extern String ps5MacAddress;
 extern bool ps5Enabled;
@@ -22,6 +22,15 @@ extern String wifiSSID;
 extern String wifiPassword;
 extern bool wifiConfigured;
 extern bool apMode;
+extern PS5Simple ps5Simple;
+
+// Funktioprototyypit
+void saveWiFiConfig(String ssid, String pass);
+bool getStablePcState();
+void startPowerOn();
+void startNormalShutdown();
+void startForceShutdown();
+void savePS5Config(bool enabled, String mac, bool autoConnect);
 
 String indexHtml = "";
 String updateHtml = "";
@@ -185,12 +194,14 @@ void setupWebServer() {
     server.on("/api/status", HTTP_GET, []() {
         bool currentMonitor = getStablePcState();
         bool currentOpto = digitalRead(OPTO_PIN);
+        bool currentExtra = digitalRead(EXTRA_PIN);  // LISÄTTY: EXTRA_PIN tila
         
         StaticJsonDocument<300> doc;
         doc["pcOn"] = currentMonitor;
         doc["shutdownRequested"] = shutdownRequested;
         doc["forceShutdown"] = forceShutdown;
         doc["optoState"] = currentOpto;
+        doc["extraPinState"] = currentExtra;  // LISÄTTY: EXTRA_PIN tila
         doc["monitorState"] = currentMonitor;
         doc["version"] = VERSION;
         
@@ -199,7 +210,7 @@ void setupWebServer() {
         server.send(200, "application/json", response);
     });
 
-    // Power-komennot
+        // Power-komennot
     server.on("/power/on", HTTP_POST, []() {
         if (getStablePcState() == LOW) {
             startPowerOn();
@@ -209,18 +220,20 @@ void setupWebServer() {
         }
     });
 
+    // Shutdown = PAKKOSAMMUTUS
     server.on("/power/off", HTTP_POST, []() {
         if (getStablePcState() == HIGH) {
-            startNormalShutdown();
+            startForceShutdown();  // ← MUUTETTU: pakkosammutus
             server.send(200, "text/plain", "OK");
         } else {
             server.send(200, "text/plain", "Already off");
         }
     });
 
+    // Force shutdown = myös PAKKOSAMMUTUS
     server.on("/power/force", HTTP_POST, []() {
         if (getStablePcState() == HIGH) {
-            startForceShutdown();
+            startForceShutdown();  // ← pakkosammutus
             server.send(200, "text/plain", "OK");
         } else {
             server.send(200, "text/plain", "Already off");
@@ -290,7 +303,6 @@ void setupWebServer() {
     });
 
     // PS5 status
-// PS5 status
     server.on("/api/ps5/status", HTTP_GET, []() {
         String stateStr = "unknown";
         
@@ -315,33 +327,32 @@ void setupWebServer() {
     });
 
     // API: Hae yhdistetyn ohjaimen MAC-osoite
-// API: Hae yhdistetyn ohjaimen MAC-osoite
-server.on("/api/ps5/connected-mac", HTTP_GET, []() {
-    StaticJsonDocument<200> doc;
-    
-    if (ps5Simple.isConnected()) {
-        // Haetaan yhdistetyn ohjaimen MAC-osoite
-        String controllerMac = ps5Simple.getConnectedMac();
+    server.on("/api/ps5/connected-mac", HTTP_GET, []() {
+        StaticJsonDocument<200> doc;
         
-        if (controllerMac.length() > 0) {
-            doc["connected"] = true;
-            doc["macAddress"] = controllerMac;
-            doc["note"] = "MAC address retrieved successfully";
+        if (ps5Simple.isConnected()) {
+            // Haetaan yhdistetyn ohjaimen MAC-osoite
+            String controllerMac = ps5Simple.getConnectedMac();
+            
+            if (controllerMac.length() > 0) {
+                doc["connected"] = true;
+                doc["macAddress"] = controllerMac;
+                doc["note"] = "MAC address retrieved successfully";
+            } else {
+                doc["connected"] = true;
+                doc["macAddress"] = "";
+                doc["note"] = "Connected but MAC not available - enter manually";
+            }
         } else {
-            doc["connected"] = true;
+            doc["connected"] = false;
             doc["macAddress"] = "";
-            doc["note"] = "Connected but MAC not available - enter manually";
+            doc["note"] = "No controller connected";
         }
-    } else {
-        doc["connected"] = false;
-        doc["macAddress"] = "";
-        doc["note"] = "No controller connected";
-    }
-    
-    String response;
-    serializeJson(doc, response);
-    server.send(200, "application/json", response);
-}); 
+        
+        String response;
+        serializeJson(doc, response);
+        server.send(200, "application/json", response);
+    }); 
 
     // API: Vapauta MAC-lukko (aseta tyhjäksi)
     server.on("/api/ps5/unlock", HTTP_POST, []() {

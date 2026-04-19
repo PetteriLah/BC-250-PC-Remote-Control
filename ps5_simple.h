@@ -72,6 +72,17 @@ public:
         // Ei tehdä mitään - ohjain katkaisee itse yhteyden
     }
     
+    // NOLLAA OHJAINTIEDOT (kutsutaan kun PC sammuu)
+    void resetControllerData() {
+        if (lastSeenMac.length() > 0) {
+            Serial.print("PS5: Nollataan ohjaintiedot - MAC: ");
+            Serial.println(lastSeenMac);
+            lastSeenMac = "";
+            lastSeenTime = 0;
+            macAutoSaved = false;
+        }
+    }
+    
     // UUSI OHJAIN HAVAITTU
     void onControllerConnected(GamepadPtr gp) {
         if (gp == nullptr) return;
@@ -162,25 +173,28 @@ public:
     }
     
     // PÄÄSÄHKIN
+    // PÄÄSÄHKIN
     void handle() {
-        // Päivitä Bluepad32
-        BP32.update();
-        
         // Tarkista PC:n tila
         bool pcOn = getStablePcState();
         
-        // JOS PC ON PÄÄLLÄ, NOLLATAAN KAIKKI OHJAINTIEDOT
+        // JOS PC ON PÄÄLLÄ TAI SAMMUMASSA, NOLLATAAN OHJAINTIEDOT
         if (pcOn || powerState != POWER_IDLE) {
             if (lastSeenMac.length() > 0) {
-                Serial.println("PS5: PC ON - nollataan ohjaintiedot");
+                Serial.println("PS5: PC ON tai sammumassa - nollataan ohjaintiedot");
                 lastSeenMac = "";
                 lastSeenTime = 0;
                 macAutoSaved = false;
             }
+            // Päivitä Bluepad32 VAIN jos PC on päällä (jotta yhteys katkeaa)
+            BP32.update();
             return;
         }
         
-        // Jos PS5 ei käytössä, älä tee mitään
+        // PC ON SAMMUNUT - päivitetään Bluepad32 normaalisti
+        BP32.update();
+        
+        // Jos PS5 ei käytössä, älä tee muuta
         if (!ps5Enabled) {
             return;
         }
