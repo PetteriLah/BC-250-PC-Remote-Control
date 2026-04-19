@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BC-250 Power Controller - Firmware Update</title>
+  <link rel="icon" href="favicon.ico" />
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo" aria-label="Steam Machine logo">
+      <img src="steam-machines.svg" alt="Steam Machines" width="180" height="50">
+    </a>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+      <a href="/">HOME</a>
+      <a href="/update">UPDATE</a>
+      <a href="/setup">SETUP</a>
+    </nav>
+  </header>
+
+  <main class="home">
+    <div class="home-content">
+      <h1>FIRMWARE UPDATE</h1>
+      <p class="subtitle">Upload new firmware to your BC-250 controller</p>
+      
+      <div class="upload-container" style="background:#14141f; border:2px solid #2a2a3a; padding:2.5rem; border-radius:8px; box-shadow:0 0 30px rgba(0,217,255,0.15); max-width:600px; margin:2rem auto;">
+        <div class="warning" style="background:rgba(255,77,109,0.1); border-left:4px solid #ff4d6d; padding:1.2rem; margin:1.5rem 0; border-radius:4px; font-family:'Share Tech Mono'; text-align:left; color:#ff4d6d;">
+          <i class='bx bx-info-circle' style="margin-right:10px; font-size:1.2rem;"></i>
+          <strong style="color:#fff; display:block; margin-bottom:5px;">IMPORTANT:</strong>
+          Do not turn off power during update!
+        </div>
+        
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+        
+        <form method="POST" action="#" enctype="multipart/form-data" id="upload_form">
+          <input type="file" name="update" id="file" onchange="updateFileName(this)" style="display:none" accept=".bin" />
+          <label id="file-input" for="file" style="padding:1.2rem; background:transparent; color:#fff; border:2px solid #00d9ff; border-radius:4px; cursor:pointer; display:inline-block; width:100%; text-align:center; margin:1rem 0; font-family:'Share Tech Mono'; font-size:1.1rem; letter-spacing:2px; transition:all 0.3s; position:relative; overflow:hidden;">
+            <i class='bx bx-cloud-upload'></i> CHOOSE FIRMWARE FILE...
+          </label>
+          <input type="submit" class="btn" value="UPLOAD AND UPDATE" style="width:100%; margin:1rem 0;" />
+        </form>
+        
+        <div id="prg" style="margin:1.5rem 0; padding:1rem; background:#0a0a0f; border-left:4px solid #00d9ff; font-family:'Share Tech Mono'; color:#00d9ff; text-align:center; border-radius:4px;"></div>
+        
+        <div class="version-info" style="margin-top:2rem; padding:1rem; border-top:2px solid #2a2a3a; font-family:'Share Tech Mono'; color:#8899aa; text-align:center;">
+          <p>CURRENT VERSION: <span id="version" style="color:#00d9ff;">LOADING...</span></p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 BC-250 POWER CONTROLLER</p>
+  </footer>
+
+    <!-- update.html - korjattu script-osio -->
+  <script>
+    function updateFileName(input) {
+      const fileName = input.value.split('\\').pop();
+      document.getElementById('file-input').innerHTML = `<i class='bx bx-file'></i> ${fileName}`;
+    }
+    
+    async function fetchVersion() {
+      try {
+        // Käytetään API-endpointia /api/status
+        const response = await fetch('/api/status');
+        if (response.ok) {
+          const data = await response.json();
+          document.getElementById('version').textContent = data.version || '2.0.0';
+        } else {
+          document.getElementById('version').textContent = 'UNKNOWN';
+        }
+      } catch (err) {
+        console.error('Version fetch error:', err);
+        document.getElementById('version').textContent = 'UNKNOWN';
+      }
+    }
+    
+    $('#upload_form').submit(function(e) {
+      e.preventDefault();
+      
+      var form = $('#upload_form')[0];
+      var data = new FormData(form);
+      
+      $('#prg').html('<i class="bx bx-loader-alt bx-spin"></i> UPLOADING...');
+      
+      $.ajax({
+        url: '/update',
+        type: 'POST',
+        data: data,
+        contentType: false,
+        processData: false,
+        xhr: function() {
+          var xhr = new window.XMLHttpRequest();
+          xhr.upload.addEventListener('progress', function(evt) {
+            if (evt.lengthComputable) {
+              var percent = Math.round(evt.loaded / evt.total * 100);
+              $('#prg').html(`📊 PROGRESS: ${percent}%`);
+            }
+          }, false);
+          return xhr;
+        },
+        success: function(d, s) {
+          $('#prg').html('✅ UPDATE SUCCESSFUL! REBOOTING IN 5 SECONDS...');
+          setTimeout(function() { window.location.href = '/'; }, 5000);
+        },
+        error: function(a, b, c) {
+          $('#prg').html('❌ UPDATE FAILED! PLEASE TRY AGAIN.');
+        }
+      });
+    });
+    
+    fetchVersion();
+  </script>
+</body>
+</html>

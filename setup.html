@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>BC-250 Power Controller - Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Enhanced styles for setup page */
+    .setup-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    .settings-section {
+      background: #14141f;
+      border: 2px solid #2a2a3a;
+      padding: 30px;
+      border-radius: 8px;
+      margin-bottom: 40px;
+      box-shadow: 0 0 30px rgba(0, 217, 255, 0.15);
+    }
+    
+    .lock-hid-message {
+      margin-top: 10px;
+      padding: 12px;
+      background: #0a0a0f;
+      border-left: 4px solid #00d9ff;
+      font-family: 'Share Tech Mono', monospace;
+      color: #00d9ff;
+      font-size: 0.95rem;
+    }
+
+    .lock-hid-message strong {
+      color: #fff;
+      display: block;
+      margin-bottom: 5px;
+    }
+    
+    .info-text {
+      color: #8899aa;
+      font-size: 0.9rem;
+      margin-top: 8px;
+      font-family: 'Inter', sans-serif;
+    }
+
+    .status-message {
+      margin: 10px 0;
+      padding: 10px;
+      background: #0a0a0f;
+      border-left: 4px solid #8899aa;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .btn-green {
+      background: #00aa00;
+      border-color: #00ff00;
+    }
+
+    .btn-red {
+      background: #5a2a2a;
+      border-color: #aa0000;
+    }
+
+    .btn-green:hover, .btn-red:hover {
+      filter: brightness(1.2);
+    }
+    
+    .mac-display {
+      background: #0a0a0f;
+      border: 2px solid #2a2a3a;
+      padding: 20px;
+      border-radius: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 1.2rem;
+      text-align: center;
+      letter-spacing: 2px;
+      color: #00d9ff;
+      margin: 15px 0;
+    }
+    
+    .badge {
+      display: inline-block;
+      padding: 5px 10px;
+      background: #1a1a2a;
+      border-left: 2px solid #00d9ff;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.8rem;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/" class="logo" aria-label="Steam Machine logo">
+      <img src="steam-machines.svg" alt="Steam Machines" width="180" height="50">
+    </a>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+      <a href="/">HOME</a>
+      <a href="/setup">SETUP</a>
+      <a href="/update">UPDATE</a>
+    </nav>
+  </header>
+  
+  <main class="home">
+    <div class="home-content setup-container">
+      <h1>🌐 WIFI SETTINGS</h1>
+      
+      <div class="settings-section">
+        <div id="wifiStatus" style="margin-bottom:20px;">LOADING STATUS...</div>
+        
+        <button onclick="scanWiFi()" class="btn" style="width:100%; margin:10px 0;">📡 SCAN NETWORKS</button>
+        
+        <div id="networkList" style="margin:20px 0;"></div>
+        
+        <label style="display:block; margin:20px 0;">
+          <strong style="font-family:'Share Tech Mono';">SSID (NETWORK NAME):</strong>
+          <input type="text" id="wifiSsid" placeholder="Enter WiFi network name" value="" style="width:100%; padding:15px; margin-top:8px; background:#0a0a0f; border:2px solid #2a2a3a; color:#fff; border-radius:4px; font-family:'Share Tech Mono';">
+          <div class="info-text">Click on a network above to fill this automatically</div>
+        </label>
+        
+        <label style="display:block; margin:20px 0;">
+          <strong style="font-family:'Share Tech Mono';">PASSWORD:</strong>
+          <input type="password" id="wifiPassword" placeholder="Enter WiFi password" style="width:100%; padding:15px; margin-top:8px; background:#0a0a0f; border:2px solid #2a2a3a; color:#fff; border-radius:4px; font-family:'Share Tech Mono';">
+        </label>
+        
+        <button onclick="saveWiFi()" class="btn" style="width:100%;">💾 SAVE & REBOOT</button>
+        <div id="wifiSaveStatus" style="margin-top:15px;"></div>
+      </div>
+      
+      <h1>🎮 PS5 CONTROLLER SETUP</h1>
+      
+      <div class="settings-section">
+        <label style="display:flex; align-items:center; margin:20px 0; cursor:pointer;">
+          <input type="checkbox" id="ps5Enabled" style="width:20px; height:20px; margin-right:12px; accent-color:#00d9ff;"> 
+          <strong style="font-family:'Share Tech Mono';">ENABLE PS5 CONTROLLER SUPPORT</strong>
+        </label>
+        
+        <!-- Controller Status Display -->
+        <div id="controllerStatus" class="status-message" style="margin-bottom:20px;"></div>
+        
+        <!-- MAC Lock Status Display -->
+        <div id="macLockStatus" class="mac-display">
+          <span id="macAddressDisplay">--:--:--:--:--:--</span>
+        </div>
+        
+        <!-- Lock/Unlock Buttons -->
+        <div style="display: flex; gap: 10px; margin: 20px 0; flex-wrap: wrap;">
+          <button onclick="lockCurrentMac()" class="btn btn-green" style="flex: 1 1 200px; padding:15px;" id="lockBtn">
+            <i class='bx bx-lock'></i> LOCK CURRENT CONTROLLER
+          </button>
+          <button onclick="unlockMac()" class="btn btn-red" style="flex: 1 1 200px; padding:15px;" id="unlockBtn">
+            <i class='bx bx-lock-open'></i> REMOVE LOCK
+          </button>
+        </div>
+        
+        <div class="lock-hid-message">
+          <strong>🔒 AUTOMATIC MAC LOCKING</strong>
+          <div style="margin-top: 5px; color: #8899aa; font-size: 0.85rem;">
+            <span style="color:#00d9ff;">📱 When you connect a controller, its MAC is automatically saved.</span><br>
+            <span style="color:#8899aa;">• "LOCK" button saves the currently seen controller</span><br>
+            <span style="color:#8899aa;">• "REMOVE LOCK" allows any controller again</span><br>
+            <span style="color:#ffaa00;">⚠️ Only one controller can be locked at a time</span>
+          </div>
+        </div>
+        
+        <button onclick="savePS5()" class="btn" style="width:100%; margin-top:30px;">💾 SAVE PS5 SETTINGS</button>
+        <div id="ps5Status" style="margin-top:15px;"></div>
+      </div>
+    </div>
+  </main>
+  
+  <footer class="footer">
+    <p>© 2026 BC-250 POWER CONTROLLER</p>
+  </footer>
+  
+  <script>
+    async function loadWiFiStatus() {
+      try {
+        const res = await fetch('/api/wifi/config');
+        const data = await res.json();
+        
+        let status = '📶 ';
+        if (data.apMode) {
+          status += 'ACCESS POINT MODE - CONFIGURE WIFI BELOW';
+        } else if (data.configured) {
+          status += 'CONNECTED TO: ' + data.ssid;
+        } else {
+          status += 'NOT CONFIGURED - ENTER WIFI DETAILS BELOW';
+        }
+        document.getElementById('wifiStatus').innerText = status;
+        document.getElementById('wifiSsid').value = data.ssid || '';
+      } catch (e) {
+        document.getElementById('wifiStatus').innerText = '❌ ERROR LOADING STATUS';
+        console.error(e);
+      }
+    }
+    
+    async function scanWiFi() {
+      document.getElementById('networkList').innerHTML = '🔄 SCANNING...';
+      
+      try {
+        await fetch('/api/wifi/scan');
+        
+        setTimeout(async () => {
+          try {
+            const res = await fetch('/api/wifi/scan');
+            const networks = await res.json();
+            
+            if (networks.scanning) {
+              document.getElementById('networkList').innerHTML = '⏳ STILL SCANNING...';
+              return;
+            }
+            
+            if (networks.length === 0) {
+              document.getElementById('networkList').innerHTML = '📭 NO NETWORKS FOUND';
+              return;
+            }
+            
+            let html = '<h3 style="margin-bottom:15px; font-family: Share Tech Mono; color: #00d9ff;">AVAILABLE NETWORKS:</h3><ul style="list-style:none; padding:0;">';
+            networks.forEach(net => {
+              const encrypted = net.encryption ? '🔒' : '🔓';
+              html += `<li onclick="document.getElementById('wifiSsid').value='${net.ssid.replace(/'/g, "\\'")}'" style="padding:12px; border-bottom:1px solid #2a2a3a; cursor:pointer; font-family:Share Tech Mono; transition:all 0.3s;" onmouseover="this.style.background='#1a1a2a'" onmouseout="this.style.background='transparent'">
+                         ${encrypted} <strong>${net.ssid}</strong> 
+                         <span style="color:#8899aa; float:right;">${net.rssi} dBm</span>
+                       </li>`;
+            });
+            html += '</ul>';
+            document.getElementById('networkList').innerHTML = html;
+          } catch (e) {
+            document.getElementById('networkList').innerHTML = '❌ SCAN FAILED';
+            console.error(e);
+          }
+        }, 2000);
+      } catch (e) {
+        document.getElementById('networkList').innerHTML = '❌ SCAN FAILED';
+        console.error(e);
+      }
+    }
+    
+    async function saveWiFi() {
+      const ssid = document.getElementById('wifiSsid').value.trim();
+      const password = document.getElementById('wifiPassword').value;
+      
+      if (!ssid) {
+        document.getElementById('wifiSaveStatus').innerText = '❌ SSID IS REQUIRED!';
+        return;
+      }
+      
+      document.getElementById('wifiSaveStatus').innerText = '💾 SAVING AND REBOOTING...';
+      
+      try {
+        const res = await fetch('/api/wifi/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ssid: ssid, password: password})
+        });
+        
+        const responseText = await res.text();
+        
+        if (res.ok) {
+          document.getElementById('wifiSaveStatus').innerHTML = '✅ SAVED! REBOOTING IN 3 SECONDS...<br>CONNECT TO YOUR WIFI NETWORK AFTER REBOOT.';
+          setTimeout(() => {
+            window.location.href = '/';
+          }, 3000);
+        } else {
+          document.getElementById('wifiSaveStatus').innerText = '❌ ERROR SAVING: ' + responseText;
+        }
+      } catch (e) {
+        document.getElementById('wifiSaveStatus').innerText = '❌ CONNECTION ERROR: ' + e.message;
+        console.error(e);
+      }
+    }
+    
+    // Hae yhdistetyn ohjaimen MAC
+    async function getConnectedControllerMac() {
+      try {
+        const res = await fetch('/api/ps5/connected-mac');
+        const data = await res.json();
+        
+        if (data.connected && data.macAddress) {
+          return data.macAddress;
+        }
+        return null;
+      } catch (e) {
+        console.error(e);
+        return null;
+      }
+    }
+    
+    // Lukitse nykyinen ohjain
+    async function lockCurrentMac() {
+      const statusDiv = document.getElementById('controllerStatus');
+      statusDiv.innerHTML = '🔍 LOOKING FOR CONTROLLER...';
+      statusDiv.style.borderLeftColor = '#8899aa';
+      
+      try {
+        const mac = await getConnectedControllerMac();
+        
+        if (mac) {
+          // Lähetä MAC tallennettavaksi
+          const config = {
+            enabled: document.getElementById('ps5Enabled').checked,
+            macAddress: mac,
+            autoConnect: false
+          };
+          
+          const res = await fetch('/api/ps5/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+          });
+          
+          if (res.ok) {
+            document.getElementById('macAddressDisplay').innerText = mac;
+            statusDiv.innerHTML = '✅ CONTROLLER LOCKED! MAC: ' + mac;
+            statusDiv.style.borderLeftColor = '#00aa00';
+            
+            // Päivitä konfiguraatio
+            loadPS5();
+          } else {
+            statusDiv.innerHTML = '❌ FAILED TO LOCK CONTROLLER';
+            statusDiv.style.borderLeftColor = '#aa0000';
+          }
+        } else {
+          statusDiv.innerHTML = '❌ NO CONTROLLER DETECTED. Press PS button to wake up controller.';
+          statusDiv.style.borderLeftColor = '#aa0000';
+        }
+      } catch (e) {
+        statusDiv.innerHTML = '❌ ERROR: ' + e.message;
+        statusDiv.style.borderLeftColor = '#aa0000';
+        console.error(e);
+      }
+    }
+    
+    // Vapauta MAC-lukko
+    async function unlockMac() {
+      if (!confirm('Are you sure you want to remove MAC lock? This will allow ALL controllers to control the PC.')) {
+        return;
+      }
+      
+      const statusDiv = document.getElementById('controllerStatus');
+      statusDiv.innerHTML = '🔄 REMOVING MAC LOCK...';
+      statusDiv.style.borderLeftColor = '#8899aa';
+      
+      try {
+        const res = await fetch('/api/ps5/unlock', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'}
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+          // Päivitä näyttö
+          document.getElementById('macAddressDisplay').innerText = '--:--:--:--:--:--';
+          
+          statusDiv.innerHTML = '🔓 ' + data.message;
+          statusDiv.style.borderLeftColor = '#aa5500';
+          
+          // Lataa konfiguraatio uudelleen
+          loadPS5();
+        } else {
+          statusDiv.innerHTML = '❌ ERROR: ' + (data.message || 'Unknown error');
+          statusDiv.style.borderLeftColor = '#aa0000';
+        }
+      } catch (e) {
+        statusDiv.innerHTML = '❌ CONNECTION ERROR: ' + e.message;
+        statusDiv.style.borderLeftColor = '#aa0000';
+        console.error(e);
+      }
+    }
+    
+    async function loadPS5() {
+      try {
+        const res = await fetch('/api/ps5/config');
+        const data = await res.json();
+        document.getElementById('ps5Enabled').checked = data.enabled || false;
+        
+        // Päivitä MAC-näyttö
+        const macDisplay = document.getElementById('macAddressDisplay');
+        const statusDiv = document.getElementById('controllerStatus');
+        
+        if (data.macAddress && data.macAddress.length > 0) {
+          macDisplay.innerText = data.macAddress;
+          statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only this controller is allowed';
+          statusDiv.style.borderLeftColor = '#00d9ff';
+        } else {
+          macDisplay.innerText = '--:--:--:--:--:--';
+          statusDiv.innerHTML = '⚠️ NO MAC RESTRICTION - All controllers are allowed';
+          statusDiv.style.borderLeftColor = '#aa5500';
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    async function savePS5() {
+      // Haetaan nykyinen MAC näytöltä (voi olla tyhjä)
+      const macText = document.getElementById('macAddressDisplay').innerText;
+      const macAddress = macText === '--:--:--:--:--:--' ? '' : macText;
+      
+      const config = {
+        enabled: document.getElementById('ps5Enabled').checked,
+        macAddress: macAddress,
+        autoConnect: false
+      };
+      
+      document.getElementById('ps5Status').innerText = '💾 SAVING...';
+      
+      try {
+        const res = await fetch('/api/ps5/config', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(config)
+        });
+        
+        const responseText = await res.text();
+        
+        if (res.ok) {
+          document.getElementById('ps5Status').innerHTML = '✅ SAVED!';
+          
+          // Päivitä status
+          const statusDiv = document.getElementById('controllerStatus');
+          if (macAddress.length > 0) {
+            statusDiv.innerHTML = '🔒 DEVICE LOCKED: Only this controller is allowed';
+            statusDiv.style.borderLeftColor = '#00d9ff';
+          } else {
+            statusDiv.innerHTML = '⚠️ NO MAC RESTRICTION - All controllers are allowed';
+            statusDiv.style.borderLeftColor = '#aa5500';
+          }
+        } else {
+          document.getElementById('ps5Status').innerHTML = '❌ ERROR: ' + responseText;
+        }
+      } catch (e) {
+        document.getElementById('ps5Status').innerHTML = '❌ CONNECTION ERROR: ' + e.message;
+        console.error(e);
+      }
+    }
+    
+    // Päivitä status säännöllisesti
+    async function updateControllerStatus() {
+      try {
+        const res = await fetch('/api/ps5/connected-mac');
+        const data = await res.json();
+        
+        const lockBtn = document.getElementById('lockBtn');
+        const currentMac = document.getElementById('macAddressDisplay').innerText;
+        
+        if (data.connected && data.macAddress) {
+          lockBtn.disabled = false;
+          if (currentMac !== data.macAddress && currentMac !== '--:--:--:--:--:--') {
+            // Näytetään että eri ohjain on lähellä
+            document.getElementById('controllerStatus').innerHTML = '📱 Different controller detected: ' + data.macAddress;
+          }
+        } else {
+          lockBtn.disabled = true;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    
+    window.onload = function() {
+      loadWiFiStatus();
+      loadPS5();
+      setInterval(updateControllerStatus, 2000);
+    };
+  </script>
+</body>
+</html>

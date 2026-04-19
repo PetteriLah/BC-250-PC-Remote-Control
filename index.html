@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Remotely control your BC-250 power controller." />
+  <title>BC-250 Power Controller</title>
+  <link rel="icon" href="favicon.ico" />
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+</head>
+
+<body>
+  <header class="header">
+    <a href="/" class="logo" aria-label="Steam Machine logo">
+      <img src="steam-machines.svg" alt="Steam Machines" width="180" height="50">
+    </a>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+      <a href="/">HOME</a>
+      <a href="/update">UPDATE</a>
+      <a href="/setup">SETUP</a>
+    </nav>
+  </header>
+
+  <!-- index.html - FIRMWARE UNKNOWN poistettu -->
+  <main id="machine-control" class="home">
+    <div class="home-content" role="region" aria-labelledby="main-heading">
+      <h1 id="main-heading">BC-250 POWER CONTROLLER</h1>
+      <p class="subtitle">Remote power control system</p>
+
+      <div class="button-group" role="group" aria-label="Power Controls">
+        <button id="powerOnBtn" class="btn power-on" aria-label="Power on machine">
+          <i class='bx bx-power-off'></i> POWER ON
+        </button>
+        <button id="powerOffBtn" class="btn power-off" aria-label="Shutdown machine">
+          <i class='bx bx-power-off'></i> SHUTDOWN
+        </button>
+      </div>
+
+      <div class="status-panel">
+        <p id="statusMsg" role="status" aria-live="polite">SYSTEM READY</p>
+      </div>
+      
+      <div class="info-grid">
+        <div class="info-item">
+          <span class="info-label">MACHINE STATUS</span>
+          <span id="machineStatusIndicator" class="info-value">UNKNOWN</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">DEVICE IP</span>
+          <span id="deviceIpAddress" class="info-value">LOADING...</span>
+        </div>
+      </div>
+
+      <!-- FIRMWARE VERSION POISTETTU KOKONAAN -->
+      
+    </div>
+  </main>
+
+  <footer class="footer">
+    <p>© 2026 BC-250 POWER CONTROLLER</p>
+  </footer>
+
+  <!-- Confirmation Dialog -->
+  <div id="confirmDialog" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogDesc" style="display: none;">
+    <div class="dialog-content">
+      <h2 id="dialogTitle">Confirm Shutdown</h2>
+      <p id="dialogDesc">Are you sure you want to force shut down the machine? This will power off the system unnaturally.</p>
+      <div class="dialog-buttons">
+        <button id="confirmCancel" class="btn cancel-btn">CANCEL</button>
+        <button id="confirmShutdown" class="btn power-off">SHUTDOWN</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+const statusMsg = document.getElementById('statusMsg');
+const machineStatusIndicator = document.getElementById('machineStatusIndicator');
+const deviceIpAddress = document.getElementById('deviceIpAddress');
+
+const confirmDialog = document.getElementById('confirmDialog');
+const confirmShutdownBtn = document.getElementById('confirmShutdown');
+const confirmCancelBtn = document.getElementById('confirmCancel');
+
+deviceIpAddress.textContent = window.location.hostname;
+
+function showMessage(message, isError = false) {
+  statusMsg.textContent = message;
+  statusMsg.className = isError ? 'error' : '';
+  
+  setTimeout(() => {
+    if (statusMsg.textContent === message) {
+      statusMsg.textContent = 'SYSTEM READY';
+      statusMsg.className = '';
+    }
+  }, 5000);
+}
+
+async function updateMachineStatus() {
+  try {
+    const response = await fetch('/api/status');
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
+    
+    if (data.pcOn) {
+      machineStatusIndicator.innerHTML = "OPERATIONAL";
+      machineStatusIndicator.style.color = "#00ffa2";
+    } else {
+      machineStatusIndicator.innerHTML = "STANDBY";
+      machineStatusIndicator.style.color = "#ff4d6d";
+    }
+    
+    if (data.forceShutdown) {
+      statusMsg.textContent = '⚠️ FORCE SHUTDOWN IN PROGRESS';
+      statusMsg.className = '';
+    } else if (data.shutdownRequested) {
+      statusMsg.textContent = '⏳ SHUTDOWN SEQUENCE ACTIVE';
+      statusMsg.className = '';
+    }
+    
+  } catch (error) {
+    console.error('Status error:', error);
+    machineStatusIndicator.innerHTML = "OFFLINE";
+    machineStatusIndicator.style.color = "#ff4d6d";
+  }
+}
+
+async function sendCommand(endpoint, commandName) {
+  const buttons = document.querySelectorAll('.btn');
+  buttons.forEach(btn => btn.disabled = true);
+  
+  showMessage(`⏳ ${commandName}...`);
+  
+  try {
+    const response = await fetch(`/${endpoint}`, { 
+      method: 'POST',
+      headers: { 'Accept': 'text/plain' }
+    });
+    
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const result = await response.text();
+    
+    showMessage(`✅ ${result || 'COMMAND EXECUTED'}`);
+    await updateMachineStatus();
+    
+    if (endpoint === 'power/off' || endpoint === 'power/force') {
+      let checks = 0;
+      const interval = setInterval(async () => {
+        await updateMachineStatus();
+        checks++;
+        if (checks > 20) clearInterval(interval);
+      }, 500);
+    }
+    
+  } catch (error) {
+    showMessage(`❌ FAILED: ${error.message}`, true);
+  } finally {
+    setTimeout(() => {
+      buttons.forEach(btn => btn.disabled = false);
+    }, 1000);
+  }
+}
+
+function showShutdownDialog() {
+  confirmDialog.style.display = 'flex';
+}
+
+function hideShutdownDialog() {
+  confirmDialog.style.display = 'none';
+}
+
+setInterval(updateMachineStatus, 1000);
+document.addEventListener('DOMContentLoaded', updateMachineStatus);
+
+document.getElementById('powerOnBtn').addEventListener('click', () => 
+  sendCommand('power/on', 'POWER ON SEQUENCE')
+);
+
+document.getElementById('powerOffBtn').addEventListener('click', showShutdownDialog);
+
+confirmShutdownBtn.addEventListener('click', () => {
+  hideShutdownDialog();
+  sendCommand('power/off', 'SHUTDOWN SEQUENCE');
+});
+
+confirmCancelBtn.addEventListener('click', hideShutdownDialog);
+
+// Close dialog when clicking outside
+window.addEventListener('click', (e) => {
+  if (e.target === confirmDialog) {
+    hideShutdownDialog();
+  }
+});
+
+// Keyboard support: Escape to close
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && confirmDialog.style.display === 'flex') {
+    hideShutdownDialog();
+  }
+});
+
+const style = document.createElement('style');
+style.textContent = `
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  
+  .confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(3px);
+  }
+  
+  .dialog-content {
+    background: linear-gradient(145deg, #1a1e2a, #151924);
+    border: 1px solid #333a4a;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+    animation: dialogFadeIn 0.3s ease;
+  }
+  
+  @keyframes dialogFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  .dialog-content h2 {
+    color: #ff4d6d;
+    margin: 0 0 16px 0;
+    font-size: 1.8rem;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+  
+  .dialog-content p {
+    color: #e0e0e0;
+    margin: 0 0 24px 0;
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+  
+  .dialog-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: flex-end;
+  }
+  
+  .dialog-buttons .btn {
+    padding: 12px 24px;
+    font-size: 1rem;
+    min-width: 120px;
+  }
+  
+  .cancel-btn {
+    background: #2a2f3c;
+    color: #e0e0e0;
+    border: 1px solid #404754;
+  }
+  
+  .cancel-btn:hover {
+    background: #353c4a;
+    border-color: #4f5665;
+  }
+`;
+document.head.appendChild(style);
+  </script>
+</body>
+</html>
