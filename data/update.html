@@ -30,13 +30,15 @@
         <div class="warning" style="background:rgba(255,77,109,0.1); border-left:4px solid #ff4d6d; padding:1.2rem; margin:1.5rem 0; border-radius:4px; font-family:'Share Tech Mono'; text-align:left; color:#ff4d6d;">
           <i class='bx bx-info-circle' style="margin-right:10px; font-size:1.2rem;"></i>
           <strong style="color:#fff; display:block; margin-bottom:5px;">IMPORTANT:</strong>
-          Do not turn off power during update!
+          Do not turn off power during update!<br>
+          <span style="color:#8899aa; font-size:0.9rem; display:block; margin-top:10px;">
+            ⚠️ After successful update, ESP32 will restart automatically.<br>
+            ⚠️ You will need to reconnect to the device.
+          </span>
         </div>
         
-        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
-        
-        <form method="POST" action="#" enctype="multipart/form-data" id="upload_form">
-          <input type="file" name="update" id="file" onchange="updateFileName(this)" style="display:none" accept=".bin" />
+        <form method="POST" action="/update" enctype="multipart/form-data" id="upload_form">
+          <input type="file" name="update" id="file" onchange="updateFileName(this)" style="display:none" accept=".bin,.bin.gz" />
           <label id="file-input" for="file" style="padding:1.2rem; background:transparent; color:#fff; border:2px solid #00d9ff; border-radius:4px; cursor:pointer; display:inline-block; width:100%; text-align:center; margin:1rem 0; font-family:'Share Tech Mono'; font-size:1.1rem; letter-spacing:2px; transition:all 0.3s; position:relative; overflow:hidden;">
             <i class='bx bx-cloud-upload'></i> CHOOSE FIRMWARE FILE...
           </label>
@@ -47,6 +49,7 @@
         
         <div class="version-info" style="margin-top:2rem; padding:1rem; border-top:2px solid #2a2a3a; font-family:'Share Tech Mono'; color:#8899aa; text-align:center;">
           <p>CURRENT VERSION: <span id="version" style="color:#00d9ff;">LOADING...</span></p>
+          <p style="font-size:0.8rem; margin-top:10px;">Build: <span id="buildInfo">Unknown</span></p>
         </div>
       </div>
     </div>
@@ -56,20 +59,19 @@
     <p>© 2026 BC-250 POWER CONTROLLER</p>
   </footer>
 
-    <!-- update.html - korjattu script-osio -->
   <script>
     function updateFileName(input) {
-      const fileName = input.value.split('\\').pop();
+      const fileName = input.files[0] ? input.files[0].name : 'CHOOSE FIRMWARE FILE...';
       document.getElementById('file-input').innerHTML = `<i class='bx bx-file'></i> ${fileName}`;
     }
     
     async function fetchVersion() {
       try {
-        // Käytetään API-endpointia /api/status
         const response = await fetch('/api/status');
         if (response.ok) {
           const data = await response.json();
-          document.getElementById('version').textContent = data.version || '2.0.0';
+          document.getElementById('version').textContent = data.version || '1.5.1';
+          document.getElementById('buildInfo').textContent = new Date().toISOString().split('T')[0];
         } else {
           document.getElementById('version').textContent = 'UNKNOWN';
         }
@@ -79,40 +81,66 @@
       }
     }
     
-    $('#upload_form').submit(function(e) {
+    // Native JavaScript - ei jQueryä!
+    document.getElementById('upload_form').addEventListener('submit', async function(e) {
       e.preventDefault();
       
-      var form = $('#upload_form')[0];
-      var data = new FormData(form);
+      const form = document.getElementById('upload_form');
+      const fileInput = document.getElementById('file');
+      const progressDiv = document.getElementById('prg');
       
-      $('#prg').html('<i class="bx bx-loader-alt bx-spin"></i> UPLOADING...');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        progressDiv.innerHTML = '❌ PLEASE SELECT A FILE FIRST!';
+        return;
+      }
       
-      $.ajax({
-        url: '/update',
-        type: 'POST',
-        data: data,
-        contentType: false,
-        processData: false,
-        xhr: function() {
-          var xhr = new window.XMLHttpRequest();
-          xhr.upload.addEventListener('progress', function(evt) {
-            if (evt.lengthComputable) {
-              var percent = Math.round(evt.loaded / evt.total * 100);
-              $('#prg').html(`📊 PROGRESS: ${percent}%`);
-            }
-          }, false);
-          return xhr;
-        },
-        success: function(d, s) {
-          $('#prg').html('✅ UPDATE SUCCESSFUL! REBOOTING IN 5 SECONDS...');
-          setTimeout(function() { window.location.href = '/'; }, 5000);
-        },
-        error: function(a, b, c) {
-          $('#prg').html('❌ UPDATE FAILED! PLEASE TRY AGAIN.');
-        }
-      });
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append('update', file);
+      
+      progressDiv.innerHTML = '<i class="bx bx-loader-alt bx-spin"></i> UPLOADING... 0%';
+      
+      try {
+        const xhr = new XMLHttpRequest();
+        
+        // Seuraa edistymistä
+        xhr.upload.addEventListener('progress', function(e) {
+          if (e.lengthComputable) {
+            const percentComplete = Math.round((e.loaded / e.total) * 100);
+            progressDiv.innerHTML = `📊 UPLOADING... ${percentComplete}%`;
+          }
+        });
+        
+        // Kun valmis
+        xhr.addEventListener('load', function() {
+          if (xhr.status === 200) {
+            progressDiv.innerHTML = '✅ UPDATE SUCCESSFUL!<br>ESP32 is rebooting...<br><br><i class="bx bx-loader-alt bx-spin"></i> Reconnecting in 10 seconds...';
+            
+            // Yritä yhdistää uudelleen 10 sekunnin kuluttua
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 10000);
+          } else {
+            progressDiv.innerHTML = `❌ UPDATE FAILED!<br>Status: ${xhr.status}<br>${xhr.responseText || 'Unknown error'}`;
+          }
+        });
+        
+        // Virheenkäsittely
+        xhr.addEventListener('error', function() {
+          progressDiv.innerHTML = '❌ NETWORK ERROR!<br>Check connection and try again.';
+        });
+        
+        // Lähetä pyyntö
+        xhr.open('POST', '/update', true);
+        xhr.send(formData);
+        
+      } catch (error) {
+        console.error('Upload error:', error);
+        progressDiv.innerHTML = `❌ UPLOAD ERROR: ${error.message}`;
+      }
     });
     
+    // Lataa versio sivun latautuessa
     fetchVersion();
   </script>
 </body>
