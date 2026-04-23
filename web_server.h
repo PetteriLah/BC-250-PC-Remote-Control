@@ -41,49 +41,117 @@ bool filesLoaded = false;
 void loadFiles() {
     if (filesLoaded) return;
     
+    Serial.println("Loading web files from LittleFS...");
+    
     if (LittleFS.exists("/index.html")) {
         File file = LittleFS.open("/index.html", "r");
         indexHtml = file.readString();
         file.close();
+        Serial.println("  - index.html loaded");
+    } else {
+        Serial.println("  - index.html NOT FOUND!");
     }
+    
     if (LittleFS.exists("/update.html")) {
         File file = LittleFS.open("/update.html", "r");
         updateHtml = file.readString();
         file.close();
+        Serial.println("  - update.html loaded");
+    } else {
+        Serial.println("  - update.html NOT FOUND!");
     }
+    
     if (LittleFS.exists("/setup.html")) {
         File file = LittleFS.open("/setup.html", "r");
         setupHtml = file.readString();
         file.close();
+        Serial.println("  - setup.html loaded");
+    } else {
+        Serial.println("  - setup.html NOT FOUND!");
     }
+    
     if (LittleFS.exists("/style.css")) {
         File file = LittleFS.open("/style.css", "r");
         styleCss = file.readString();
         file.close();
+        Serial.println("  - style.css loaded");
+    } else {
+        Serial.println("  - style.css NOT FOUND!");
     }
+    
     filesLoaded = true;
 }
 
 void setupWebServer() {
     loadFiles();
     
-    // Staattiset sivut
+    Serial.println("Setting up web server routes...");
+    
+    // ========== TÄRKEÄÄ: POST-reitit ENNEN GET-reittejä! ==========
+    
+    // FIRMWARE UPDATE - POST (tämä käsittelee tiedoston lähetyksen)
+    server.on("/update", HTTP_POST, []() {
+        // Tämä suoritetaan kun upload on valmis
+        if (Update.hasError()) {
+            server.send(500, "text/plain", "Update failed!");
+            Serial.println("Update failed!");
+        } else {
+            server.send(200, "text/plain", "OK");
+            Serial.println("Update successful! Rebooting...");
+            delay(1000);
+            ESP.restart();
+        }
+    }, []() {
+        // Tämä suoritetaan uploadin aikana
+        HTTPUpload& upload = server.upload();
+        
+        if (upload.status == UPLOAD_FILE_START) {
+            Serial.printf("Update Start: %s (size: %u bytes)\n", 
+                         upload.filename.c_str(), upload.totalSize);
+            if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+                Update.printError(Serial);
+            }
+        } else if (upload.status == UPLOAD_FILE_WRITE) {
+            if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                Update.printError(Serial);
+            }
+            // Tulosta edistyminen joka 100kB välein
+            static unsigned int lastProgress = 0;
+            unsigned int progress = (Update.progress() * 100) / Update.size();
+            if (progress / 10 != lastProgress / 10) {
+                Serial.printf("Progress: %u%%\n", progress);
+                lastProgress = progress;
+            }
+        } else if (upload.status == UPLOAD_FILE_END) {
+            if (Update.end(true)) {
+                Serial.printf("Update Success: %u bytes\n", upload.totalSize);
+            } else {
+                Update.printError(Serial);
+            }
+        }
+    });
+    
+    // FIRMWARE UPDATE - GET (näyttää web-sivun)
+    server.on("/update", HTTP_GET, []() {
+        server.send(200, "text/html", updateHtml);
+    });
+    
+    // Etusivu
     server.on("/", []() {
         server.send(200, "text/html", indexHtml);
     });
     
-    server.on("/update", []() {
-        server.send(200, "text/html", updateHtml);
-    });
-    
+    // Setup-sivu
     server.on("/setup", []() {
         server.send(200, "text/html", setupHtml);
     });
     
+    // CSS-tyylit
     server.on("/style.css", []() {
         server.send(200, "text/css", styleCss);
     });
 
+    // SVG-logo
     server.on("/steam-machines.svg", []() {
         if (LittleFS.exists("/steam-machines.svg")) {
             File file = LittleFS.open("/steam-machines.svg", "r");
@@ -173,7 +241,7 @@ void setupWebServer() {
             serializeJson(doc, response);
             server.send(200, "application/json", response);
         } else if (n >= 0) {
-            StaticJsonDocument<1000> doc;
+            StaticJsonDocument<2000> doc;
             JsonArray networks = doc.to<JsonArray>();
             
             for (int i = 0; i < n; ++i) {
@@ -190,18 +258,18 @@ void setupWebServer() {
         }
     });
 
-    // STATUS API
+    // API: Status
     server.on("/api/status", HTTP_GET, []() {
         bool currentMonitor = getStablePcState();
         bool currentOpto = digitalRead(OPTO_PIN);
-        bool currentExtra = digitalRead(EXTRA_PIN);  // LISÄTTY: EXTRA_PIN tila
+        bool currentExtra = digitalRead(EXTRA_PIN);
         
         StaticJsonDocument<300> doc;
         doc["pcOn"] = currentMonitor;
         doc["shutdownRequested"] = shutdownRequested;
         doc["forceShutdown"] = forceShutdown;
         doc["optoState"] = currentOpto;
-        doc["extraPinState"] = currentExtra;  // LISÄTTY: EXTRA_PIN tila
+        doc["extraPinState"] = currentExtra;
         doc["monitorState"] = currentMonitor;
         doc["version"] = VERSION;
         
@@ -210,8 +278,9 @@ void setupWebServer() {
         server.send(200, "application/json", response);
     });
 
-        // Power-komennot
+    // API: Power ON
     server.on("/power/on", HTTP_POST, []() {
+        Serial.println("API: Power ON requested");
         if (getStablePcState() == LOW) {
             startPowerOn();
             server.send(200, "text/plain", "OK");
@@ -220,50 +289,29 @@ void setupWebServer() {
         }
     });
 
-    // Shutdown = PAKKOSAMMUTUS
+    // API: Power OFF (pakkosammutus)
     server.on("/power/off", HTTP_POST, []() {
+        Serial.println("API: Power OFF requested");
         if (getStablePcState() == HIGH) {
-            startForceShutdown();  // ← MUUTETTU: pakkosammutus
+            startForceShutdown();
             server.send(200, "text/plain", "OK");
         } else {
             server.send(200, "text/plain", "Already off");
         }
     });
 
-    // Force shutdown = myös PAKKOSAMMUTUS
+    // API: Force shutdown
     server.on("/power/force", HTTP_POST, []() {
+        Serial.println("API: Force shutdown requested");
         if (getStablePcState() == HIGH) {
-            startForceShutdown();  // ← pakkosammutus
+            startForceShutdown();
             server.send(200, "text/plain", "OK");
         } else {
             server.send(200, "text/plain", "Already off");
         }
     });
 
-    // Firmware update
-    server.on("/update", HTTP_POST, []() {
-        server.sendHeader("Connection", "close");
-        server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
-    }, []() {
-        HTTPUpload& upload = server.upload();
-        
-        if (upload.status == UPLOAD_FILE_START) {
-            Update.begin(UPDATE_SIZE_UNKNOWN);
-        } else if (upload.status == UPLOAD_FILE_WRITE) {
-            Update.write(upload.buf, upload.currentSize);
-        } else if (upload.status == UPLOAD_FILE_END) {
-            if (Update.end(true)) {
-                server.sendHeader("Connection", "close");
-                server.send(200, "text/plain", "Update successful! Rebooting...");
-                delay(1000);
-                ESP.restart();
-            } else {
-                server.send(500, "text/plain", "Update failed!");
-            }
-        }
-    });
-
-    // PS5 konfiguraatio - GET
+    // API: PS5 konfiguraatio - GET
     server.on("/api/ps5/config", HTTP_GET, []() {
         StaticJsonDocument<300> doc;
         doc["macAddress"] = ps5MacAddress;
@@ -274,8 +322,35 @@ void setupWebServer() {
         serializeJson(doc, response);
         server.send(200, "application/json", response);
     });
+    
+        // LittleFS OTA update
+        server.on("/update-fs", HTTP_POST, []() {
+            server.sendHeader("Connection", "close");
+            server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+            delay(1000);
+            ESP.restart();
+        }, []() {
+            HTTPUpload& upload = server.upload();
+            
+            if (upload.status == UPLOAD_FILE_START) {
+                Serial.printf("LittleFS Update: %s\n", upload.filename.c_str());
+                if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_SPIFFS)) {  // HUOM: U_SPIFFS!
+                    Update.printError(Serial);
+                }
+            } else if (upload.status == UPLOAD_FILE_WRITE) {
+                if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+                    Update.printError(Serial);
+                }
+            } else if (upload.status == UPLOAD_FILE_END) {
+                if (Update.end(true)) {
+                    Serial.printf("LittleFS Update Success: %u bytes\n", upload.totalSize);
+                } else {
+                    Update.printError(Serial);
+                }
+            }
+        });
 
-    // PS5 konfiguraatio - POST
+    // API: PS5 konfiguraatio - POST
     server.on("/api/ps5/config", HTTP_POST, []() {
         if (!server.hasArg("plain")) {
             server.send(400, "text/plain", "Body missing");
@@ -300,13 +375,13 @@ void setupWebServer() {
         
         savePS5Config(enabled, macStr, autoConnect);
         server.send(200, "text/plain", "OK");
+        Serial.println("PS5 config saved");
     });
 
-    // PS5 status
+    // API: PS5 status
     server.on("/api/ps5/status", HTTP_GET, []() {
         String stateStr = "unknown";
         
-        // Määritellään tila PS5Simple-luokan perusteella
         if (!ps5Enabled) {
             stateStr = "disabled";
         } else if (ps5Simple.isConnected()) {
@@ -331,7 +406,6 @@ void setupWebServer() {
         StaticJsonDocument<200> doc;
         
         if (ps5Simple.isConnected()) {
-            // Haetaan yhdistetyn ohjaimen MAC-osoite
             String controllerMac = ps5Simple.getConnectedMac();
             
             if (controllerMac.length() > 0) {
@@ -354,14 +428,12 @@ void setupWebServer() {
         server.send(200, "application/json", response);
     }); 
 
-    // API: Vapauta MAC-lukko (aseta tyhjäksi)
+    // API: Vapauta MAC-lukko
     server.on("/api/ps5/unlock", HTTP_POST, []() {
         Serial.println("PS5: MAC-lukko vapautetaan");
         
-        // Tallennetaan tyhjä MAC (kaikki sallittu)
         savePS5Config(ps5Enabled, "", ps5AutoConnect);
         
-        // Lähetä vastaus
         StaticJsonDocument<100> doc;
         doc["status"] = "ok";
         doc["message"] = "MAC lock removed - all controllers allowed";
@@ -371,7 +443,15 @@ void setupWebServer() {
         server.send(200, "application/json", response);
     });
 
+    // 404 - Not found
+    server.onNotFound([]() {
+        server.send(404, "text/plain", "404: Not Found");
+    });
+
     server.begin();
+    Serial.println("Web server started!");
+    Serial.print("  - IP: ");
+    Serial.println(WiFi.localIP());
 }
 
 #endif // WEB_SERVER_H

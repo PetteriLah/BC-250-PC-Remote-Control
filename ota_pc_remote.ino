@@ -300,12 +300,34 @@ void setup() {
 void loop() {
     unsigned long now = millis();
     
-    // LISÄTTY: DEBUG - tulosta powerState sekunnin välein
+    // ================ YKSINKERTAINEN RATKAISU: ESP32 UUDELLEENKÄYNNISTYS ================
+    static unsigned long pcOffStartTime = 0;
+    
+    // Seuraa kuinka kauan PC on ollut sammuneena
+    if (!pcIsOn && powerState == POWER_IDLE) {
+        if (pcOffStartTime == 0) {
+            pcOffStartTime = now;
+            Serial.println("PC sammui - uudelleenkäynnistys 2 tunnin kuluttua");
+        }
+        
+        // JOS PC OLLUT SAMMUNEENA YLI 2 TUNTIA, KÄYNNISTÄ ESP32 UUDELLEEN
+        if (now - pcOffStartTime >= 7200000) { // 2 tuntia = 7200000 ms
+            Serial.println("=== PC ollut sammuneena 2 tuntia - ESP32 UUDELLEENKÄYNNISTYS ===");
+            delay(1000);
+            ESP.restart();
+        }
+    } else {
+        // PC on päällä tai käynnistymässä - nollaa ajastin
+        pcOffStartTime = 0;
+    }
+    
+    // ================ POWER STATE DEBUG ================
     static unsigned long lastStatePrint = 0;
     static PowerState lastPowerState = POWER_IDLE;
     
     if (powerState != lastPowerState) {
         // Tila on vaihtunut, tulosta uusi tila
+        Serial.print("STATE: ");
         switch(powerState) {
             case POWER_IDLE: Serial.print("IDLE"); break;
             case POWER_ON_START: Serial.print("ON_START"); break;
@@ -318,38 +340,83 @@ void loop() {
             case POWER_FORCE_WAITING: Serial.print("FORCE_WAITING"); break;
             default: Serial.print("UNKNOWN"); break;
         }
-        Serial.println();
+        Serial.print(" (pcIsOn=");
+        Serial.print(pcIsOn ? "ON" : "OFF");
+        Serial.print(", monitor=");
+        Serial.print(digitalRead(PC_MONITOR_PIN) ? "HIGH" : "LOW");
+        Serial.println(")");
         lastPowerState = powerState;
         lastStatePrint = now;
     }
+    
+    // Tulosta tila 60 sekunnin välein
+    if (now - lastStatePrint >= 60000) {
+        Serial.print("HEARTBEAT: ");
+        Serial.print(millis() / 1000);
+        Serial.print("s - State: ");
+        switch(powerState) {
+            case POWER_IDLE: 
+                Serial.print("IDLE");
+                if (!pcIsOn) {
+                    Serial.print(" (uudelleenkäynnistys ");
+                    Serial.print((7200000 - (now - pcOffStartTime)) / 1000);
+                    Serial.print("s kuluttua)");
+                }
+                break;
+            case POWER_ON_START: Serial.print("ON_START"); break;
+            case POWER_ON_WAITING_RELAY2: Serial.print("ON_WAITING_RELAY2"); break;
+            case POWER_ON_COMPLETE: Serial.print("ON_COMPLETE"); break;
+            case POWER_OFF_START: Serial.print("OFF_START"); break;
+            case POWER_OFF_WAITING: Serial.print("OFF_WAITING"); break;
+            case POWER_OFF_WAITING_POWEROFF: Serial.print("OFF_WAITING_POWEROFF"); break;
+            case POWER_FORCE_START: Serial.print("FORCE_START"); break;
+            case POWER_FORCE_WAITING: Serial.print("FORCE_WAITING"); break;
+            default: Serial.print("UNKNOWN"); break;
+        }
+        Serial.print(", PC: ");
+        Serial.print(pcIsOn ? "ON" : "OFF");
+        Serial.println();
+        lastStatePrint = now;
+    }
 
-    // Lue BUTTON_PIN
+    // ================ PINNIN LUKU ================
     if (now - lastPinRead >= pinReadInterval) {
         cachedButtonState = digitalRead(BUTTON_PIN);
         lastPinRead = now;
     }
 
-    // Käsittele PC:n tilat
+    // ================ PC:N TILAN KÄSITTELY ================
     if (now - lastPcStateHandle >= pcStateHandleInterval) {
         handlePcStates();
         lastPcStateHandle = now;
     }
 
-    // Käsittele power-tilat
+    // ================ POWER-TILOJEN KÄSITTELY ================
     handlePowerStates();
 
-    // Web-palvelin
+    // ================ WEB-PALVELIN ================
     if (now - lastServerHandle >= serverHandleInterval) {
         server.handleClient();
         lastServerHandle = now;
     }
     
-    // PS5 päivitys
-    ps5Simple.handle();
+    // ================ PS5-OHJAIMEN KÄSITTELY ================
+    // Vain jos PC on sammunut ja idle-tilassa
+    if (!pcIsOn && powerState == POWER_IDLE) {
+        ps5Simple.handle();
+    } else {
+        // PC on päällä - älä käsittele PS5:sta, mutta päivitä Bluepad32
+        static unsigned long lastBP32Update = 0;
+        if (now - lastBP32Update >= 100) {
+            BP32.update();
+            lastBP32Update = now;
+        }
+    }
     
-    // ================ KORJATTU PAINIKKEEN KÄSITTELY ================
+    // ================ PAINIKKEEN KÄSITTELY ================
     static unsigned long buttonPressStartTime = 0;
     static bool buttonPressDetected = false;
+    static bool lastStableButtonState = HIGH;
     
     // Tarkista painikkeen tila debouncella
     if (cachedButtonState != lastStableButtonState) {
@@ -380,11 +447,6 @@ void loop() {
             if (powerState == POWER_IDLE) {
                 bool pcOn = getStablePcState();
                 
-                Serial.print("DEBUG: getStablePcState() = ");
-                Serial.print(pcOn ? "HIGH (PC ON)" : "LOW (PC OFF)");
-                Serial.print(", digitalRead(PC_MONITOR_PIN) = ");
-                Serial.println(digitalRead(PC_MONITOR_PIN) ? "HIGH" : "LOW");
-                
                 if (pcOn) {
                     // PC ON PÄÄLLÄ
                     if (pressDuration >= 5000) {
@@ -398,28 +460,16 @@ void loop() {
                     }
                 } else {
                     // PC ON SAMMUNUT
-                    // Painalluksesta riippumatta = KÄYNNISTYS
                     Serial.println("BUTTON: PC sammunut - KÄYNNISTYS");
                     startPowerOn();
                 }
             } else {
                 Serial.print("BUTTON: Power-tila ei IDLE - komento hylätty. Nykyinen tila: ");
-                switch(powerState) {
-                    case POWER_IDLE: Serial.print("IDLE"); break;
-                    case POWER_ON_START: Serial.print("ON_START"); break;
-                    case POWER_ON_WAITING_RELAY2: Serial.print("ON_WAITING_RELAY2"); break;
-                    case POWER_ON_COMPLETE: Serial.print("ON_COMPLETE"); break;
-                    case POWER_OFF_START: Serial.print("OFF_START"); break;
-                    case POWER_OFF_WAITING: Serial.print("OFF_WAITING"); break;
-                    case POWER_OFF_WAITING_POWEROFF: Serial.print("OFF_WAITING_POWEROFF"); break;
-                    case POWER_FORCE_START: Serial.print("FORCE_START"); break;
-                    case POWER_FORCE_WAITING: Serial.print("FORCE_WAITING"); break;
-                    default: Serial.print("UNKNOWN"); break;
-                }
-                Serial.println();
+                Serial.println(powerState);
             }
         }
     }
     
+    // ================ PIENI VIIVE ================
     delay(1);
 }
