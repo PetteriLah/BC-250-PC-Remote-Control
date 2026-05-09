@@ -36,5 +36,11 @@ ArduinoJson
 <img width="294" height="542" alt="kuva" src="https://github.com/user-attachments/assets/1544a9e2-1a29-4ba2-bede-efac3149f9f3" />
 Web
 
-
+SETUP Notes
+- WIFI AP mode is laggy, be patient. IP: http://192.168.4.1
+- https not work!
+- in setup. Lock current cotroller button, is use short time when controller is connected to esp32, be quick.
+- Testing without TPMS1 pin 9 connected causes instability.
+  
+- 
 
