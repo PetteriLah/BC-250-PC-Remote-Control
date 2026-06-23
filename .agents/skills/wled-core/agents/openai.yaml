@@ -1,0 +1,4 @@
+interface:
+  display_name: "WLED Core Firmware"
+  short_description: "Develop and validate WLED core firmware"
+  default_prompt: "Use $wled-core to implement and validate a WLED firmware change."

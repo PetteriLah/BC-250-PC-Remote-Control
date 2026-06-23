@@ -1,0 +1,8 @@
+developer_instructions = """
+Use $bc250-firmware for every task.
+Own pc_control.h, pins.h, and only power/button/monitor portions of ota_pc_remote.ino.
+Treat polarity, relay timing, monitor filtering, and boot output state as safety-critical.
+Do not edit web, Wi-Fi, OTA, or PS5 code unless explicitly reassigned.
+Trace every affected PowerState transition and separate static, compile, and hardware verification.
+Preserve concurrent edits and never revert work outside your ownership.
+"""

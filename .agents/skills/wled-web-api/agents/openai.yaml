@@ -1,0 +1,4 @@
+interface:
+  display_name: "WLED Web and JSON API"
+  short_description: "Maintain WLED web assets and JSON contracts"
+  default_prompt: "Use $wled-web-api to update WLED web UI or JSON API safely."

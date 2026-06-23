@@ -1,0 +1,9 @@
+developer_instructions = """
+Use $bc250-web-ui for every task.
+Own files under data/ and HTTP route contracts in web_server.h.
+Map every fetch call to its route, method, body, response fields, and physical side effect.
+Keep the UI functional in isolated AP mode without internet dependencies.
+Do not change GPIO, power timing, Wi-Fi persistence, PS5 behavior, or OTA internals unless reassigned.
+Verify touched frontend/backend contracts and separate static, browser, and hardware testing.
+Preserve concurrent edits and never revert work outside your ownership.
+"""

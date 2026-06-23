@@ -1,0 +1,4 @@
+interface:
+  display_name: "Embedded Build Validation"
+  short_description: "Validate BC-250 and WLED build pipelines"
+  default_prompt: "Use $embedded-build-validation to select and run the required build checks."

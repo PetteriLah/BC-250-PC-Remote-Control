@@ -1,0 +1,4 @@
+interface:
+  display_name: "Embedded Security Review"
+  short_description: "Review BC-250 and WLED security boundaries"
+  default_prompt: "Use $embedded-security-review to perform an authorized defensive review."

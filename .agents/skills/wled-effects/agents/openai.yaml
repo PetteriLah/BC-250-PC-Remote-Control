@@ -1,0 +1,4 @@
+interface:
+  display_name: "WLED Effects"
+  short_description: "Develop performant WLED effects and rendering"
+  default_prompt: "Use $wled-effects to implement or optimize a WLED effect."

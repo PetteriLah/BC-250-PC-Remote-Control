@@ -1,0 +1,4 @@
+interface:
+  display_name: "BC-250 Connectivity"
+  short_description: "Maintain WiFi Bluetooth storage and OTA"
+  default_prompt: "Use $bc250-connectivity to change BC-250 connectivity or persistence safely."

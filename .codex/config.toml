@@ -1,0 +1,33 @@
+[agents]
+max_threads = 6
+max_depth = 1
+
+[agents.power_firmware]
+description = "Own GPIO safety, button handling, PC monitoring, and power-state sequencing."
+config_file = "agents/power-firmware.toml"
+nickname_candidates = ["Relay", "Ohm", "Pulse"]
+
+[agents.platform_connectivity]
+description = "Own Wi-Fi, Bluepad32/PS5, LittleFS persistence, OTA platform behavior, and versioning."
+config_file = "agents/platform-connectivity.toml"
+nickname_candidates = ["Beacon", "Link", "Flash"]
+
+[agents.web_contract]
+description = "Own the embedded HTTP contract and LittleFS UI."
+config_file = "agents/web-contract.toml"
+nickname_candidates = ["Router", "Pixel", "Fetch"]
+
+[agents.code_reviewer]
+description = "Review changes for correctness, regressions, hardware risks, and missing verification without modifying code."
+config_file = "agents/code-reviewer.toml"
+nickname_candidates = ["Lint", "Diff", "Audit"]
+
+[agents.test_engineer]
+description = "Design and implement reproducible firmware, API-contract, and web UI tests with explicit hardware-test boundaries."
+config_file = "agents/test-engineer.toml"
+nickname_candidates = ["Probe", "Fixture", "Check"]
+
+[agents.security_tester]
+description = "Perform authorized defensive security review of the local firmware, HTTP API, OTA, persistence, and web UI."
+config_file = "agents/security-tester.toml"
+nickname_candidates = ["Shield", "Sentry", "Cipher"]

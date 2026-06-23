@@ -1,0 +1,4 @@
+interface:
+  display_name: "WLED Usermod"
+  short_description: "Build safe and compatible WLED usermods"
+  default_prompt: "Use $wled-usermod to create or update a WLED usermod."
